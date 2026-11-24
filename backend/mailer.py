@@ -11,8 +11,14 @@ Se configura con variables de entorno (nunca en el código ni en Git):
     NEOACCESS_SMTP_PASSWORD  contraseña de aplicación de esa cuenta
     NEOACCESS_SMTP_FROM      remitente visible (opcional; por defecto SMTP_USER)
 
+En lugar de definirlas a mano, se pueden escribir en el archivo local
+`config_servidor.env` (raíz del proyecto; está en .gitignore). Copie
+`config_servidor.env.ejemplo` y rellénelo.
+
 Si no hay SMTP configurado (modo pruebas), el enlace se imprime en la consola
 del servidor en lugar de enviarse.
+
+Probar el envío:   python backend/mailer.py su.correo@itsoeh.edu.mx
 """
 
 import os
@@ -20,9 +26,33 @@ import smtplib
 import ssl
 from email.message import EmailMessage
 
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config_servidor.env")
+
+
+def load_local_config(path: str = CONFIG_FILE) -> bool:
+    """
+    Carga variables NEOACCESS_* desde config_servidor.env (formato CLAVE=valor).
+    Las variables ya definidas en el sistema tienen prioridad.
+    """
+    if not os.path.exists(path):
+        return False
+    with open(path, encoding="utf-8-sig") as f:
+        for linea in f:
+            linea = linea.strip()
+            if not linea or linea.startswith("#") or "=" not in linea:
+                continue
+            clave, valor = linea.split("=", 1)
+            clave, valor = clave.strip(), valor.strip().strip('"').strip("'")
+            if clave.startswith("NEOACCESS_") and valor and clave not in os.environ:
+                os.environ[clave] = valor
+    return True
+
+
+load_local_config()
+
 
 def smtp_configured() -> bool:
-    return bool(os.environ.get("NEOACCESS_SMTP_HOST") and os.environ.get("NEOACCESS_SMTP_USER"))
+    return all(os.environ.get(k) for k in ("NEOACCESS_SMTP_HOST", "NEOACCESS_SMTP_USER", "NEOACCESS_SMTP_PASSWORD"))
 
 
 def send_email(to: str, subject: str, text: str, html: str = None) -> bool:
@@ -62,3 +92,24 @@ def send_email(to: str, subject: str, text: str, html: str = None) -> bool:
             s.login(user, password)
             s.send_message(msg)
     return True
+
+
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) != 2:
+        print("Uso: python backend/mailer.py destino@itsoeh.edu.mx")
+        sys.exit(1)
+    if not smtp_configured():
+        print("SMTP no configurado. Copie config_servidor.env.ejemplo a config_servidor.env y rellénelo.")
+        sys.exit(1)
+    print(f"Enviando correo de prueba a {sys.argv[1]} con {os.environ['NEOACCESS_SMTP_HOST']}...")
+    try:
+        send_email(sys.argv[1], "Prueba de NeoAccess ITSOEH",
+                   "Si recibes este correo, el envío de verificaciones de NeoAccess funciona.")
+        print("[OK] Correo enviado. Revise la bandeja de entrada (y la carpeta de spam).")
+    except smtplib.SMTPAuthenticationError:
+        print("[ERROR] Usuario o contraseña rechazados. Use una CONTRASEÑA DE APLICACIÓN, no la normal.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"[ERROR] {type(e).__name__}: {e}")
+        sys.exit(1)

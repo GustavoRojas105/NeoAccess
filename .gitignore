@@ -33,3 +33,6 @@ tools/plantilla_alumnos.csv
 
 # Accesos de prueba locales (no publicar)
 ACCESOS_PRUEBA.txt
+
+# Configuración local del servidor (contraseña SMTP)
+config_servidor.env

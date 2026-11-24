@@ -26,9 +26,14 @@ python database\seed_data.py
 echo.
 echo ======================================================================
 echo  Iniciando Servidor Web en: http://localhost:8000/login
-echo  Usuario Administrador: admin
-echo  Contrasena: admin123
+echo  Cuentas de prueba: ver ACCESOS_PRUEBA.txt
 echo ======================================================================
+if exist "config_servidor.env" (
+    echo  Correo de verificacion: usando config_servidor.env
+) else (
+    echo  Correo de verificacion: SIN CONFIGURAR - los enlaces se muestran en esta consola.
+    echo  Para enviar correos copie config_servidor.env.ejemplo como config_servidor.env
+)
 echo.
 start http://localhost:8000/login
 python backend\app.py

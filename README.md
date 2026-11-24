@@ -16,7 +16,7 @@ NeoAccess/
 ├── backend/                       # Servidor central y API REST / IoT (FastAPI)
 │   ├── app.py                     # Endpoints del Dashboard, IoT, registro facial y comandos remotos
 │   ├── auth.py                    # PBKDF2-SHA256 (600k iteraciones), sesiones y límite de intentos
-│   ├── mailer.py                  # Envío de correos de verificación (SMTP)
+│   ├── mailer.py                  # Envío de correos de verificación (SMTP); prueba: python backend\mailer.py
 │   └── models.py                  # Modelos Pydantic de validación
 │
 ├── database/                      # Base de datos SQLite
@@ -107,18 +107,19 @@ Alumnos y docentes crean su cuenta en la pestaña **Crear cuenta** del login:
 - Si el administrador ya había dado de alta la matrícula (sin contraseña), el registro se vincula a ese mismo alumno en lugar de duplicarlo.
 - Se aceptan como máximo 5 solicitudes por hora desde la misma IP.
 
-**Configurar el envío de correos** (antes de iniciar el servidor; usa una contraseña de aplicación, nunca la escribas en el código):
+**Configurar el envío de correos:**
 
-```powershell
-set NEOACCESS_SMTP_HOST=smtp.gmail.com
-set NEOACCESS_SMTP_PORT=587
-set NEOACCESS_SMTP_USER=neoaccess@itsoeh.edu.mx
-set NEOACCESS_SMTP_PASSWORD=contraseña-de-aplicacion
-set NEOACCESS_PUBLIC_URL=http://192.168.1.50:8000
-```
+1. Copia `config_servidor.env.ejemplo` como **`config_servidor.env`**. Es un archivo local y no se sube a Git.
+2. Rellena la cuenta que enviará los correos y su **contraseña de aplicación**:
+   - **Google Workspace:** `smtp.gmail.com`. La cuenta necesita verificación en 2 pasos; la contraseña se crea en *Cuenta de Google → Seguridad → Contraseñas de aplicaciones*.
+   - **Microsoft 365:** `smtp.office365.com`. El administrador de TI debe tener habilitado *SMTP AUTH* para esa cuenta.
+3. En `NEOACCESS_PUBLIC_URL` pon la IP fija de la PC servidor. Es la dirección que aparecerá en el enlace del correo.
+4. Prueba el envío:
+   ```powershell
+   python backend\mailer.py tu.correo@itsoeh.edu.mx
+   ```
+5. Reinicia `run_server.bat`. Al arrancar indica si está usando `config_servidor.env`.
 
-- Google Workspace usa `smtp.gmail.com`; Microsoft 365 usa `smtp.office365.com`.
-- `NEOACCESS_PUBLIC_URL` es la dirección que aparecerá en el enlace del correo.
 - **Sin SMTP configurado (modo pruebas)**, el enlace se imprime en la consola del servidor en lugar de enviarse.
 
 ---
