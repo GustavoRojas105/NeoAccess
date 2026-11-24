@@ -306,7 +306,16 @@ function setupNavigation() {
     btn.addEventListener("click", () => {
       const section = btn.getAttribute("data-section");
       switchSection(section);
+      document.body.classList.remove("sidebar-open"); // cerrar menú en celular
     });
+  });
+
+  // Menú deslizable en la versión móvil
+  document.getElementById("btn-mobile-menu")?.addEventListener("click", () => {
+    document.body.classList.toggle("sidebar-open");
+  });
+  document.getElementById("sidebar-backdrop")?.addEventListener("click", () => {
+    document.body.classList.remove("sidebar-open");
   });
 }
 
@@ -464,5 +473,6 @@ window.closeModal = function(id) {
       video.srcObject.getTracks().forEach(track => track.stop());
       video.srcObject = null;
     }
+    if (typeof clearPhonePhotos === "function") clearPhonePhotos(); // RF-07
   }
 };

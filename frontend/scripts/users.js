@@ -20,7 +20,56 @@ async function loadStudentsData() {
   }
 }
 
+// Versión móvil: una tarjeta por alumno con botón grande para registrar el rostro
+function renderStudentsCards(students) {
+  const box = document.getElementById("cards-students");
+  if (!box) return;
+  if (students.length === 0) {
+    box.innerHTML = `<div class="p-6 text-center text-slate-400 bg-white rounded-xl border text-xs">No se encontraron alumnos</div>`;
+    return;
+  }
+  box.innerHTML = students.map(u => {
+    const isActivo = u.estado === "activo";
+    const hasFace = u.tiene_rostro === 1;
+    return `
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3">
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0">
+            <p class="text-sm font-bold text-slate-900">${esc(u.nombre_completo)}</p>
+            <p class="text-xs text-slate-500"><span class="font-mono font-semibold text-slate-700">${esc(u.matricula_clave)}</span> • ${esc(u.grupo_nombre || u.grupo_id || 'Sin grupo')}</p>
+            <p class="text-[11px] text-slate-400">${esc(u.carrera || 'ITSOEH')}</p>
+          </div>
+          <span class="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-semibold ${isActivo ? 'bg-slate-100 text-slate-800' : 'bg-red-50 text-red-700'}">
+            ${isActivo ? 'Activo' : 'Baja'}
+          </span>
+        </div>
+        <div class="text-[11px]">
+          ${hasFace
+            ? `<span class="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-medium"><span class="status-dot online"></span> Rostro registrado</span>`
+            : `<span class="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full font-medium"><span class="status-dot intermittent"></span> Rostro sin registrar</span>`}
+        </div>
+        <div class="flex gap-2">
+          <button onclick="openFaceCaptureModal(${escJsArg(u.id)}, ${escJsArg(u.nombre_completo)})"
+            class="flex-1 py-2 px-3 ${hasFace ? 'bg-slate-100 text-slate-800 border border-slate-300' : 'bg-emerald-600 text-white'} text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5">
+            <i data-lucide="scan-face" class="w-4 h-4"></i>
+            <span>${hasFace ? 'Actualizar rostro' : 'Registrar rostro'}</span>
+          </button>
+          <button onclick="viewUserDetails(${escJsArg(u.id)})"
+            class="py-2 px-3 bg-slate-100 text-slate-700 rounded-lg border border-slate-300" title="Ver detalle">
+            <i data-lucide="eye" class="w-4 h-4"></i>
+          </button>
+          <button onclick="toggleUserStatus(${escJsArg(u.id)})"
+            class="py-2 px-3 bg-slate-100 text-slate-500 rounded-lg border border-slate-300" title="Dar de baja">
+            <i data-lucide="user-x" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
 function renderStudentsTable(students) {
+  renderStudentsCards(students);
   const tbody = document.getElementById("table-students");
   if (!tbody) return;
 
@@ -224,21 +273,117 @@ function openFaceCaptureModal(userId, userName) {
   const statusEl = document.getElementById("vector-status");
   statusEl.classList.add("hidden");
   statusEl.textContent = "";
+  clearPhonePhotos();
 
   openModal("modal-face-capture");
+}
+
+// -------------------------------------------------------------
+// Cámara del celular (versión móvil)
+// Usa <input capture> para abrir la cámara nativa del teléfono: funciona aunque
+// el Dashboard se abra por http://IP-de-la-PC:8000 (getUserMedia exige HTTPS).
+// Las fotos se reducen y viven solo en memoria hasta enviarse (RF-07).
+// -------------------------------------------------------------
+const MAX_PHONE_PHOTOS = 3;
+let phonePhotos = [];
+
+function clearPhonePhotos() {
+  phonePhotos.length = 0;
+  const img = document.getElementById("phone-photo-preview");
+  const badge = document.getElementById("phone-photo-count");
+  if (img) { img.removeAttribute("src"); img.classList.add("hidden"); }
+  if (badge) badge.classList.add("hidden");
+  const video = document.getElementById("webcam-preview");
+  const placeholder = document.getElementById("camera-placeholder");
+  if (placeholder && (!video || !video.srcObject)) placeholder.classList.remove("hidden");
+}
+
+// Reduce la foto del teléfono (a menudo 4-12 MP) a JPEG de máx. 1280 px
+function resizePhotoToJpeg(file, maxSide = 1280) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      // Los navegadores actuales ya aplican la orientación EXIF al dibujar
+      const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.naturalWidth * scale);
+      canvas.height = Math.round(img.naturalHeight * scale);
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.88);
+      ctx.clearRect(0, 0, canvas.width, canvas.height); // RF-07
+      URL.revokeObjectURL(url);
+      resolve(dataUrl);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("No se pudo leer la foto (formato no compatible)."));
+    };
+    img.src = url;
+  });
+}
+
+async function onPhonePhotoSelected(e) {
+  const input = e.target;
+  const file = input.files && input.files[0];
+  input.value = ""; // permitir tomar otra foto
+  if (!file) return;
+
+  const statusEl = document.getElementById("vector-status");
+  if (phonePhotos.length >= MAX_PHONE_PHOTOS) {
+    statusEl.classList.remove("hidden");
+    statusEl.textContent = `Máximo ${MAX_PHONE_PHOTOS} fotos. Pulse "Extraer y Guardar" o "Borrar fotos".`;
+    return;
+  }
+  try {
+    const dataUrl = await resizePhotoToJpeg(file);
+    phonePhotos.push(dataUrl);
+
+    // Si la webcam estaba encendida, se apaga: se usarán las fotos del celular
+    const video = document.getElementById("webcam-preview");
+    if (video && video.srcObject) {
+      video.srcObject.getTracks().forEach(t => t.stop());
+      video.srcObject = null;
+    }
+    video?.classList.add("hidden");
+    document.getElementById("camera-placeholder")?.classList.add("hidden");
+
+    const img = document.getElementById("phone-photo-preview");
+    img.src = dataUrl;
+    img.classList.remove("hidden");
+    const badge = document.getElementById("phone-photo-count");
+    badge.textContent = `${phonePhotos.length}/${MAX_PHONE_PHOTOS} fotos`;
+    badge.classList.remove("hidden");
+
+    statusEl.classList.remove("hidden");
+    statusEl.textContent = phonePhotos.length < MAX_PHONE_PHOTOS
+      ? `Foto ${phonePhotos.length} lista. Puede tomar otra (recomendado) o pulsar "Extraer y Guardar Vector".`
+      : `${MAX_PHONE_PHOTOS} fotos listas. Pulse "Extraer y Guardar Vector".`;
+  } catch (err) {
+    statusEl.classList.remove("hidden");
+    statusEl.textContent = err.message;
+  }
 }
 
 async function startWebcam() {
   const video = document.getElementById("webcam-preview");
   const placeholder = document.getElementById("camera-placeholder");
 
+  if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+    alert("La cámara en vivo solo funciona en http://localhost o con HTTPS.\n\nDesde el celular use el botón \"Tomar foto con el celular\".");
+    return;
+  }
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 480, height: 360 } });
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }
+    });
+    clearPhonePhotos();
     video.srcObject = stream;
     video.classList.remove("hidden");
     placeholder.classList.add("hidden");
   } catch (err) {
-    alert("No se pudo acceder a la cámara web. Verifique permisos del navegador (se requiere http://localhost o HTTPS).");
+    alert("No se pudo acceder a la cámara. Verifique los permisos del navegador o use \"Tomar foto con el celular\".");
   }
 }
 
@@ -268,9 +413,9 @@ async function extractAndSaveVector() {
   const btn = document.getElementById("btn-capture-and-extract");
   statusEl.classList.remove("hidden");
 
-  const frames = await captureWebcamFrames();
+  const frames = phonePhotos.length ? phonePhotos.slice() : await captureWebcamFrames();
   if (!frames) {
-    statusEl.textContent = "Primero active la cámara y espere a que se vea su rostro.";
+    statusEl.textContent = "Primero encienda la cámara o tome una foto con el celular.";
     return;
   }
 
@@ -283,6 +428,7 @@ async function extractAndSaveVector() {
       body: { imagenes: frames }
     });
     frames.length = 0; // RF-07: descartar fotogramas en el navegador
+    clearPhonePhotos();
 
     statusEl.innerHTML = `
       <span class="text-emerald-700 font-bold">✓ ${esc(res.message)}</span><br>
@@ -315,6 +461,17 @@ document.addEventListener("DOMContentLoaded", () => {
     extractAndSaveVector();
   });
 
+  document.getElementById("btn-phone-camera")?.addEventListener("click", () => {
+    document.getElementById("phone-camera-input")?.click();
+  });
+  document.getElementById("phone-camera-input")?.addEventListener("change", onPhonePhotoSelected);
+  document.getElementById("btn-phone-clear")?.addEventListener("click", () => {
+    clearPhonePhotos();
+    const statusEl = document.getElementById("vector-status");
+    statusEl.classList.add("hidden");
+    statusEl.textContent = "";
+  });
+
   // Modal para agregar alumno
   document.getElementById("btn-modal-add-student")?.addEventListener("click", () => {
     openModal("modal-add-student");
@@ -340,6 +497,10 @@ document.addEventListener("DOMContentLoaded", () => {
       closeModal("modal-add-student");
       document.getElementById("form-add-student").reset();
       loadStudentsData();
+      // Ofrecer registrar el rostro de inmediato (cámara de la PC o del celular)
+      if (confirm(`Alumno ${payload.nombre_completo} registrado.\n\n¿Registrar ahora su rostro con la cámara?`)) {
+        openFaceCaptureModal(payload.id, payload.nombre_completo);
+      }
     } catch (err) {
       alert("Error al registrar alumno: " + err.message);
     }

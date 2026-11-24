@@ -150,7 +150,8 @@ El servidor y las puertas usan **el mismo motor** ([`raspberry_pi/face_engine.py
 
 - **YuNet** detecta el rostro; **SFace** genera el vector de 128 dimensiones; se comparan por **similitud coseno** (umbral `umbral_similitud_coseno`, 0.363 por defecto; súbelo, p. ej. a 0.45, si hay falsos positivos).
 - **Modelos:** `python raspberry_pi/descargar_modelos.py` (≈37 MB, una sola vez en la PC y en cada Pi). `run_server.bat` y `setup_rpi.sh` lo hacen automáticamente.
-- **Registro (Dashboard → Usuarios → cámara):** el navegador toma 3 fotogramas, el servidor extrae el vector y **descarta las imágenes** (RF-07). La cámara del navegador solo funciona en `http://localhost` o con HTTPS.
+- **Registro (Dashboard → Usuarios → cámara):** el navegador toma 3 fotogramas, el servidor extrae el vector y **descarta las imágenes** (RF-07). La cámara en vivo del navegador solo funciona en `http://localhost` o con HTTPS.
+- **Registro desde el celular:** abre `http://IP-DE-TU-PC:8000` en el teléfono (misma red Wi-Fi), entra como administrador → **Alumnos** → **Registrar rostro** → **Tomar foto con el celular** (1 a 3 fotos). Usa la cámara nativa del teléfono, así que funciona aunque la conexión sea `http`. Las fotos se reducen a 1280 px en el teléfono, solo viven en memoria y el servidor las descarta tras extraer el vector. Al dar de alta un alumno, el Dashboard ofrece registrar su rostro de inmediato.
 - **Importante:** los vectores de prueba de `seed_data.py` son aleatorios; hay que **registrar el rostro** de cada persona para que la puerta la reconozca.
 
 ### Puerta (Raspberry Pi)

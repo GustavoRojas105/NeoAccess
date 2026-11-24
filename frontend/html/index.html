@@ -10,7 +10,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
-  <link rel="stylesheet" href="/styles/style.css?v=20261124_01">
+  <link rel="stylesheet" href="/styles/style.css?v=20261124_02">
   <script>
     // Si no hay sesión activa, limpiar DOM, pintar negro y redirigir al login puro
     if (!localStorage.getItem("neoaccess_token") || !localStorage.getItem("neoaccess_user")) {
@@ -95,19 +95,25 @@
         </div>
       </div>
     </aside>
+    <!-- Fondo oscuro del menú en celular -->
+    <div id="sidebar-backdrop" class="hidden"></div>
 
     <!-- ÁREA DE CONTENIDO: ADMINISTRADOR -->
     <main id="admin-content-area" class="flex-1 overflow-y-auto bg-slate-50 hidden">
       
       <!-- Top Header Bar -->
-      <header class="bg-white border-b border-slate-200 px-6 py-3.5 flex items-center justify-between sticky top-0 z-20">
-        <div class="flex items-center gap-3">
-          <h2 id="page-title" class="text-lg font-bold text-slate-900">Métricas y Resumen General</h2>
-          <span id="page-subtitle" class="text-xs text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full font-medium">Panel de Control</span>
+      <header class="bg-white border-b border-slate-200 px-3 sm:px-6 py-3 sm:py-3.5 flex items-center justify-between gap-2 sticky top-0 z-20">
+        <div class="flex items-center gap-2 sm:gap-3 min-w-0">
+          <!-- Botón de menú (solo en celular) -->
+          <button id="btn-mobile-menu" type="button" class="md:hidden p-2 -ml-1 text-slate-700 hover:bg-slate-100 rounded-lg border border-slate-200" title="Menú" aria-label="Abrir menú">
+            <i data-lucide="menu" class="w-5 h-5"></i>
+          </button>
+          <h2 id="page-title" class="text-base sm:text-lg font-bold text-slate-900 truncate">Métricas y Resumen General</h2>
+          <span id="page-subtitle" class="hidden sm:inline text-xs text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full font-medium">Panel de Control</span>
         </div>
         
-        <div class="flex items-center gap-3">
-          <div id="quick-device-status" class="flex items-center gap-2 text-xs bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
+        <div class="flex items-center gap-2 sm:gap-3 shrink-0">
+          <div id="quick-device-status" class="hidden lg:flex items-center gap-2 text-xs bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
             <span class="flex items-center"><span class="status-dot online"></span><span id="pill-online">0</span> En línea</span>
             <span class="text-slate-300">|</span>
             <span class="flex items-center"><span class="status-dot intermittent"></span><span id="pill-intermittent">0</span> Intermitente</span>
@@ -121,13 +127,13 @@
 
           <button class="btn-logout-action px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition flex items-center gap-1.5" title="Cerrar Sesión">
             <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
-            <span>Cerrar Sesión</span>
+            <span class="hidden sm:inline">Cerrar Sesión</span>
           </button>
         </div>
       </header>
 
       <!-- SECCIONES DE CONTENIDO DINÁMICO ADMIN -->
-      <div class="p-6 max-w-7xl mx-auto space-y-6">
+      <div class="p-3 sm:p-6 max-w-7xl mx-auto space-y-4 sm:space-y-6">
 
         <!-- ================= SECCIÓN 1: MÉTRICAS (RF-19) ================= -->
         <section id="section-metrics" class="space-y-6">
@@ -386,7 +392,10 @@
             <input type="text" id="search-student" placeholder="Buscar por nombre o matrícula..." class="w-full text-xs border-none focus:outline-none bg-transparent">
           </div>
 
-          <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <!-- Lista en tarjetas (solo celular) -->
+          <div id="cards-students" class="md:hidden space-y-3"></div>
+
+          <div class="hidden md:block bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <div class="overflow-x-auto">
               <table class="w-full text-left text-xs">
                 <thead class="bg-slate-50 text-slate-600 uppercase font-semibold border-b border-slate-200">
@@ -1038,7 +1047,7 @@
 
   <!-- ================= MODAL: REGISTRAR ROSTRO ================= -->
   <div id="modal-face-capture" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay p-4 hidden">
-    <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6 border border-slate-200 space-y-4">
+    <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-4 sm:p-6 border border-slate-200 space-y-4 max-h-[95vh] overflow-y-auto">
       <div class="flex items-center justify-between border-b border-slate-200 pb-3">
         <div>
           <h3 class="font-bold text-sm text-slate-900">Registro de Metadatos Faciales (RF-15)</h3>
@@ -1055,16 +1064,32 @@
       </div>
 
       <div class="space-y-3">
-        <div class="relative bg-slate-900 rounded-lg overflow-hidden h-52 flex items-center justify-center">
+        <div class="relative bg-slate-900 rounded-lg overflow-hidden h-64 sm:h-52 flex items-center justify-center">
           <video id="webcam-preview" autoplay playsinline class="w-full h-full object-cover hidden"></video>
           <canvas id="face-canvas" class="hidden"></canvas>
           <div id="camera-placeholder" class="text-center text-slate-400 space-y-2">
             <i data-lucide="camera" class="w-8 h-8 mx-auto"></i>
-            <p class="text-xs">Haga clic en Iniciar Cámara o Generar Vector Matemático</p>
+            <p class="text-xs px-4">Encienda la cámara o, desde el celular, use <strong>Tomar foto con el celular</strong></p>
           </div>
+          <img id="phone-photo-preview" alt="" class="w-full h-full object-contain hidden">
+          <span id="phone-photo-count" class="hidden absolute top-2 right-2 px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[11px] font-semibold"></span>
         </div>
 
-        <div class="flex items-center justify-between gap-2">
+        <!-- Cámara del celular: abre la cámara nativa del teléfono (funciona también por http en la red local) -->
+        <input id="phone-camera-input" type="file" accept="image/*" capture="user" class="hidden">
+        <div class="grid grid-cols-2 gap-2">
+          <button id="btn-phone-camera" type="button" class="px-3 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 flex items-center justify-center gap-1.5">
+            <i data-lucide="smartphone" class="w-3.5 h-3.5"></i>
+            <span>Tomar foto con el celular</span>
+          </button>
+          <button id="btn-phone-clear" type="button" class="px-3 py-2 bg-slate-100 text-slate-700 text-xs rounded-lg hover:bg-slate-200 border border-slate-300 flex items-center justify-center gap-1.5">
+            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+            <span>Borrar fotos</span>
+          </button>
+        </div>
+        <p class="text-[10px] text-slate-500">Tome de 1 a 3 fotos de frente, con buena luz y sin lentes oscuros ni gorra. Más fotos = mejor reconocimiento.</p>
+
+        <div class="flex flex-wrap items-center justify-between gap-2">
           <button id="btn-start-camera" type="button" class="px-3 py-1.5 bg-slate-100 text-slate-800 text-xs rounded-lg hover:bg-slate-200 border border-slate-300 flex items-center gap-1.5">
             <i data-lucide="video" class="w-3.5 h-3.5"></i>
             <span>Encender Cámara</span>
@@ -1082,12 +1107,12 @@
   </div>
 
   <!-- Scripts modulares de la aplicación con cache-busting -->
-  <script src="/scripts/app.js?v=20261124_01"></script>
-  <script src="/scripts/laboratories.js?v=20261124_01"></script>
-  <script src="/scripts/metrics.js?v=20261124_01"></script>
-  <script src="/scripts/devices.js?v=20261124_01"></script>
-  <script src="/scripts/schedules.js?v=20261124_01"></script>
-  <script src="/scripts/users.js?v=20261124_01"></script>
-  <script src="/scripts/reports.js?v=20261124_01"></script>
+  <script src="/scripts/app.js?v=20261124_02"></script>
+  <script src="/scripts/laboratories.js?v=20261124_02"></script>
+  <script src="/scripts/metrics.js?v=20261124_02"></script>
+  <script src="/scripts/devices.js?v=20261124_02"></script>
+  <script src="/scripts/schedules.js?v=20261124_02"></script>
+  <script src="/scripts/users.js?v=20261124_02"></script>
+  <script src="/scripts/reports.js?v=20261124_02"></script>
 </body>
 </html>
