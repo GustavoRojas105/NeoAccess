@@ -1442,6 +1442,18 @@ def delete_schedule(schedule_id: int, admin: dict = Depends(get_current_admin)):
     conn.close()
     return {"success": True, "message": "Horario eliminado."}
 
+@app.exception_handler(sqlite3.IntegrityError)
+async def integrity_error_handler(request: Request, exc: sqlite3.IntegrityError):
+    """Datos duplicados o referencias inexistentes: mensaje claro en lugar de un error 500."""
+    msg = str(exc)
+    if "UNIQUE" in msg:
+        detalle = "Ya existe un registro con ese ID o clave."
+    elif "FOREIGN KEY" in msg:
+        detalle = "Uno de los datos hace referencia a un registro que no existe (grupo, laboratorio, etc.)."
+    else:
+        detalle = f"Datos inválidos: {msg}"
+    return JSONResponse(status_code=400, content={"detail": detalle})
+
 @app.get("/api/groups")
 def get_groups(admin: dict = Depends(get_current_admin)):
     conn = get_connection()
@@ -1503,37 +1515,83 @@ def get_users(
         r.pop("password_hash", None)  # nunca exponer hashes de contraseña
     return rows
 
+TIPOS_USUARIO = ("alumno", "docente", "personal_limpieza")
+
+def _validar_usuario(payload: UserCreate, cursor) -> dict:
+    """Normaliza y valida los datos de un usuario; lanza 400 con un mensaje claro."""
+    datos = {
+        "id": (payload.id or "").strip().upper(),
+        "nombre_completo": " ".join((payload.nombre_completo or "").split()),
+        "tipo": (payload.tipo or "").strip(),
+        "matricula_clave": (payload.matricula_clave or "").strip(),
+        "carrera": (payload.carrera or "").strip() or None,
+        "grupo_id": (payload.grupo_id or "").strip().upper() or None,
+        "estado": (payload.estado or "activo").strip() or "activo",
+    }
+    if not datos["id"] or not datos["nombre_completo"] or not datos["matricula_clave"]:
+        raise HTTPException(status_code=400, detail="El ID, el nombre y la matrícula/clave son obligatorios.")
+    if datos["tipo"] not in TIPOS_USUARIO:
+        raise HTTPException(status_code=400, detail="Tipo de usuario inválido.")
+    if datos["estado"] not in ("activo", "inactivo"):
+        raise HTTPException(status_code=400, detail="Estado inválido.")
+    if datos["grupo_id"]:
+        cursor.execute("SELECT 1 FROM grupos WHERE id = ?", (datos["grupo_id"],))
+        if not cursor.fetchone():
+            cursor.execute("SELECT id FROM grupos ORDER BY id")
+            existentes = ", ".join(r["id"] for r in cursor.fetchall()) or "ninguno"
+            raise HTTPException(
+                status_code=400,
+                detail=f"El grupo '{datos['grupo_id']}' no existe. Grupos registrados: {existentes}."
+            )
+    return datos
+
 @app.post("/api/users")
 def create_user(payload: UserCreate, admin: dict = Depends(get_current_admin)):
     conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT id FROM usuarios WHERE id = ? OR matricula_clave = ?", (payload.id, payload.matricula_clave))
-    if cursor.fetchone():
+    try:
+        cursor = conn.cursor()
+        d = _validar_usuario(payload, cursor)
+        cursor.execute("SELECT id FROM usuarios WHERE id = ? OR matricula_clave = ?", (d["id"], d["matricula_clave"]))
+        if cursor.fetchone():
+            raise HTTPException(status_code=400, detail="El ID o la matrícula/clave ya existen.")
+        try:
+            cursor.execute("""
+            INSERT INTO usuarios (id, nombre_completo, tipo, matricula_clave, carrera, grupo_id, estado)
+            VALUES (?, ?, ?, ?, ?, ?, ?);
+            """, (d["id"], d["nombre_completo"], d["tipo"], d["matricula_clave"], d["carrera"], d["grupo_id"], d["estado"]))
+            conn.commit()
+        except sqlite3.IntegrityError as e:
+            conn.rollback()
+            raise HTTPException(status_code=400, detail=f"No se pudo registrar el usuario: {e}")
+        return {"success": True, "message": f"Usuario '{d['nombre_completo']}' registrado exitosamente.", "id": d["id"]}
+    finally:
         conn.close()
-        raise HTTPException(status_code=400, detail="El ID o la matrícula/clave ya existen.")
-
-    cursor.execute("""
-    INSERT INTO usuarios (id, nombre_completo, tipo, matricula_clave, carrera, grupo_id, estado)
-    VALUES (?, ?, ?, ?, ?, ?, ?);
-    """, (payload.id, payload.nombre_completo, payload.tipo, payload.matricula_clave, payload.carrera, payload.grupo_id, payload.estado or 'activo'))
-
-    conn.commit()
-    conn.close()
-    return {"success": True, "message": f"Usuario '{payload.nombre_completo}' registrado exitosamente."}
 
 @app.put("/api/users/{user_id}")
 def update_user(user_id: str, payload: UserCreate, admin: dict = Depends(get_current_admin)):
     conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-    UPDATE usuarios
-    SET nombre_completo = ?, tipo = ?, matricula_clave = ?, carrera = ?, grupo_id = ?, estado = ?
-    WHERE id = ?;
-    """, (payload.nombre_completo, payload.tipo, payload.matricula_clave, payload.carrera, payload.grupo_id, payload.estado, user_id))
-    conn.commit()
-    conn.close()
-    return {"success": True, "message": "Usuario actualizado."}
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM usuarios WHERE id = ?", (user_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+        d = _validar_usuario(payload, cursor)
+        cursor.execute("SELECT 1 FROM usuarios WHERE matricula_clave = ? AND id <> ?", (d["matricula_clave"], user_id))
+        if cursor.fetchone():
+            raise HTTPException(status_code=400, detail="Esa matrícula/clave ya pertenece a otro usuario.")
+        try:
+            cursor.execute("""
+            UPDATE usuarios
+            SET nombre_completo = ?, tipo = ?, matricula_clave = ?, carrera = ?, grupo_id = ?, estado = ?
+            WHERE id = ?;
+            """, (d["nombre_completo"], d["tipo"], d["matricula_clave"], d["carrera"], d["grupo_id"], d["estado"], user_id))
+            conn.commit()
+        except sqlite3.IntegrityError as e:
+            conn.rollback()
+            raise HTTPException(status_code=400, detail=f"No se pudo actualizar el usuario: {e}")
+        return {"success": True, "message": "Usuario actualizado."}
+    finally:
+        conn.close()
 
 @app.delete("/api/users/{user_id}")
 def delete_user(user_id: str, admin: dict = Depends(get_current_admin)):

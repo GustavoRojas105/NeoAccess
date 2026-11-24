@@ -277,6 +277,24 @@ async function approveAccount(userId, nombre) {
   }
 }
 
+// Llena la lista de grupos del formulario "Registrar Alumno" con los grupos reales
+async function loadStudentGroupOptions() {
+  const sel = document.getElementById("student-new-group");
+  if (!sel) return;
+  try {
+    const grupos = await apiFetch("/api/groups");
+    if (grupos.length === 0) {
+      sel.innerHTML = `<option value="">No hay grupos: créelos en Horarios y Grupos</option>`;
+      return;
+    }
+    sel.innerHTML = `<option value="">Seleccione un grupo...</option>` + grupos.map(g =>
+      `<option value="${esc(g.id)}">${esc(g.id)} • ${esc(g.nombre)}</option>`
+    ).join("");
+  } catch (err) {
+    sel.innerHTML = `<option value="">No se pudieron cargar los grupos</option>`;
+  }
+}
+
 async function toggleUserStatus(userId) {
   if (!confirm("¿Está seguro de dar de baja a este usuario?")) return;
   try {
@@ -496,6 +514,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Modal para agregar alumno
   document.getElementById("btn-modal-add-student")?.addEventListener("click", () => {
+    loadStudentGroupOptions();
     openModal("modal-add-student");
   });
 
@@ -506,7 +525,7 @@ document.addEventListener("DOMContentLoaded", () => {
       nombre_completo: document.getElementById("student-new-name").value.trim(),
       matricula_clave: document.getElementById("student-new-matricula").value.trim(),
       carrera: document.getElementById("student-new-career").value.trim(),
-      grupo_id: document.getElementById("student-new-group").value.trim().toUpperCase(),
+      grupo_id: document.getElementById("student-new-group").value || null,
       tipo: "alumno",
       estado: "activo"
     };
