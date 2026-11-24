@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NeoAccess | Control de Acceso IoT ITSOEH</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="/styles/style.css?v=20261124_01">
+  <script>
+    // Si no hay sesión activa, limpiar DOM, pintar negro y redirigir al login puro
+    if (!localStorage.getItem("neoaccess_token") || !localStorage.getItem("neoaccess_user")) {
+      document.documentElement.style.backgroundColor = '#0f172a';
+      document.documentElement.innerHTML = '<body style="background:#0f172a;min-height:100vh;"></body>';
+      const dest = window.location.protocol === "file:" ? "login.html" : "/login?logout=1&t=" + Date.now();
+      window.location.replace(dest);
+    }
+  </script>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col">
+
+  <!-- ================= APLICACIÓN PRINCIPAL (DASHBOARD) ================= -->
+  <div id="main-layout" class="flex-1 flex overflow-hidden">
+    
+    <!-- BARRA LATERAL ADMINISTRADOR (SIDEBAR IZQUIERDO - Sección 9) -->
+    <aside id="admin-sidebar" class="w-64 bg-slate-900 text-slate-200 flex flex-col justify-between border-r border-slate-800 select-none hidden">
+      <div>
+        <!-- Brand Header -->
+        <div class="p-5 border-b border-slate-800 flex items-center gap-3">
+          <div class="p-2 bg-slate-800 rounded-lg border border-slate-700 text-white">
+            <i data-lucide="fingerprint" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <h1 class="font-bold text-base tracking-wide text-white">NeoAccess</h1>
+            <p class="text-[11px] text-slate-400 font-medium">IoT Hub ITSOEH</p>
+          </div>
+        </div>
+
+        <!-- Navigation Menu -->
+        <nav class="p-3 space-y-1 text-sm font-medium">
+          <button data-section="metrics" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition">
+            <i data-lucide="layout-dashboard" class="w-4 h-4 text-slate-400"></i>
+            <span>Métricas</span>
+          </button>
+
+          <button data-section="devices" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition">
+            <i data-lucide="cpu" class="w-4 h-4 text-slate-400"></i>
+            <span>Dispositivos y Puertas</span>
+          </button>
+
+          <button data-section="laboratories" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition">
+            <i data-lucide="door-open" class="w-4 h-4 text-slate-400"></i>
+            <span>Laboratorios y Salones</span>
+          </button>
+
+          <button data-section="schedules" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition">
+            <i data-lucide="calendar-clock" class="w-4 h-4 text-slate-400"></i>
+            <span>Horarios y Grupos</span>
+          </button>
+
+          <button data-section="students" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition">
+            <i data-lucide="graduation-cap" class="w-4 h-4 text-slate-400"></i>
+            <span>Alumnos</span>
+          </button>
+
+          <button data-section="teachers" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition">
+            <i data-lucide="briefcase" class="w-4 h-4 text-slate-400"></i>
+            <span>Maestros y Personal</span>
+          </button>
+
+          <button data-section="reports" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition">
+            <i data-lucide="file-spreadsheet" class="w-4 h-4 text-slate-400"></i>
+            <span>Reportes</span>
+          </button>
+        </nav>
+      </div>
+
+      <!-- Footer Sesión -->
+      <div class="p-4 border-t border-slate-800 bg-slate-950/40">
+        <div class="flex items-center justify-between mb-2">
+          <div class="truncate">
+            <p id="admin-user-display" class="text-xs font-semibold text-white truncate">Ing. Administrador</p>
+            <p id="user-role-badge" class="text-[10px] text-emerald-400 font-bold">ADMINISTRADOR</p>
+          </div>
+          <button title="Cerrar Sesión" class="btn-logout-action p-1.5 rounded-md hover:bg-slate-800 text-slate-400 hover:text-white transition">
+            <i data-lucide="log-out" class="w-4 h-4"></i>
+          </button>
+        </div>
+        <div class="text-[10px] text-slate-500 text-center pt-1 border-t border-slate-800/80">
+          Red Local • Puerto 8000
+        </div>
+      </div>
+    </aside>
+
+    <!-- ÁREA DE CONTENIDO: ADMINISTRADOR -->
+    <main id="admin-content-area" class="flex-1 overflow-y-auto bg-slate-50 hidden">
+      
+      <!-- Top Header Bar -->
+      <header class="bg-white border-b border-slate-200 px-6 py-3.5 flex items-center justify-between sticky top-0 z-20">
+        <div class="flex items-center gap-3">
+          <h2 id="page-title" class="text-lg font-bold text-slate-900">Métricas y Resumen General</h2>
+          <span id="page-subtitle" class="text-xs text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full font-medium">Panel de Control</span>
+        </div>
+        
+        <div class="flex items-center gap-3">
+          <div id="quick-device-status" class="flex items-center gap-2 text-xs bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
+            <span class="flex items-center"><span class="status-dot online"></span><span id="pill-online">0</span> En línea</span>
+            <span class="text-slate-300">|</span>
+            <span class="flex items-center"><span class="status-dot intermittent"></span><span id="pill-intermittent">0</span> Intermitente</span>
+            <span class="text-slate-300">|</span>
+            <span class="flex items-center"><span class="status-dot offline"></span><span id="pill-offline">0</span> Fuera</span>
+          </div>
+
+          <button id="btn-refresh" class="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg border border-slate-200 transition" title="Actualizar datos">
+            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+          </button>
+
+          <button class="btn-logout-action px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition flex items-center gap-1.5" title="Cerrar Sesión">
+            <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+            <span>Cerrar Sesión</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- SECCIONES DE CONTENIDO DINÁMICO ADMIN -->
+      <div class="p-6 max-w-7xl mx-auto space-y-6">
+
+        <!-- ================= SECCIÓN 1: MÉTRICAS (RF-19) ================= -->
+        <section id="section-metrics" class="space-y-6">
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center gap-4">
+            <div class="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase">
+              <i data-lucide="filter" class="w-4 h-4"></i>
+              <span>Filtros:</span>
+            </div>
+
+            <div class="flex-1 min-w-[180px]">
+              <label class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Laboratorio</label>
+              <select id="filter-metrics-lab" class="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2 focus:ring-1 focus:ring-slate-700">
+                <option value="todos">Todos los laboratorios</option>
+              </select>
+            </div>
+
+            <div class="flex-1 min-w-[180px]">
+              <label class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Carrera</label>
+              <select id="filter-metrics-career" class="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2 focus:ring-1 focus:ring-slate-700">
+                <option value="todas">Todas las carreras</option>
+                <option value="Ingeniería Mecatrónica">Ingeniería Mecatrónica</option>
+                <option value="Ingeniería en Sistemas Computacionales">Ingeniería en Sistemas Computacionales</option>
+                <option value="Ingeniería Industrial">Ingeniería Industrial</option>
+              </select>
+            </div>
+
+            <div class="w-40">
+              <label class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Periodo</label>
+              <select id="filter-metrics-period" class="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2 focus:ring-1 focus:ring-slate-700">
+                <option value="7">Últimos 7 días</option>
+                <option value="15">Últimos 15 días</option>
+                <option value="30">Último mes</option>
+                <option value="all">Todo el historial</option>
+              </select>
+            </div>
+
+            <button id="btn-apply-metrics-filter" class="self-end px-4 py-2 bg-slate-900 text-white text-xs font-medium rounded-lg hover:bg-slate-800 transition">
+              Aplicar Filtros
+            </button>
+          </div>
+
+          <!-- Tarjetas KPI -->
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+              <div>
+                <p class="text-xs font-medium text-slate-500 uppercase">Total de Accesos</p>
+                <h3 id="kpi-total-accesos" class="text-2xl font-bold text-slate-900 mt-1">--</h3>
+                <p class="text-[11px] text-slate-400 mt-1">Registros procesados</p>
+              </div>
+              <div class="p-3 bg-slate-100 rounded-xl text-slate-700 border border-slate-200">
+                <i data-lucide="log-in" class="w-6 h-6"></i>
+              </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+              <div>
+                <p class="text-xs font-medium text-slate-500 uppercase">Usuarios Únicos</p>
+                <h3 id="kpi-usuarios-unicos" class="text-2xl font-bold text-slate-900 mt-1">--</h3>
+                <p class="text-[11px] text-slate-400 mt-1">Alumnos y docentes</p>
+              </div>
+              <div class="p-3 bg-slate-100 rounded-xl text-slate-700 border border-slate-200">
+                <i data-lucide="users" class="w-6 h-6"></i>
+              </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+              <div>
+                <p class="text-xs font-medium text-slate-500 uppercase">Efectividad de Acceso</p>
+                <h3 id="kpi-tasa-exito" class="text-2xl font-bold text-slate-900 mt-1">--%</h3>
+                <p class="text-[11px] text-slate-400 mt-1"><span id="kpi-permitidos">--</span> válidos / <span id="kpi-denegados">--</span> denegados</p>
+              </div>
+              <div class="p-3 bg-slate-100 rounded-xl text-slate-700 border border-slate-200">
+                <i data-lucide="check-check" class="w-6 h-6"></i>
+              </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+              <div>
+                <p class="text-xs font-medium text-slate-500 uppercase">Dispositivos Activos</p>
+                <h3 id="kpi-dispositivos-activos" class="text-2xl font-bold text-slate-900 mt-1">--</h3>
+                <p class="text-[11px] text-slate-400 mt-1">Raspberry Pi Zero W</p>
+              </div>
+              <div class="p-3 bg-slate-100 rounded-xl text-slate-700 border border-slate-200">
+                <i data-lucide="router" class="w-6 h-6"></i>
+              </div>
+            </div>
+          </div>
+
+          <!-- Gráficos -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <div class="flex items-center justify-between mb-4">
+                <h4 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <i data-lucide="bar-chart-2" class="w-4 h-4 text-slate-500"></i>
+                  <span>Afluencia de Accesos por Laboratorio</span>
+                </h4>
+                <span class="text-xs text-slate-400">Total acumulado</span>
+              </div>
+              <div class="h-64 relative">
+                <canvas id="chart-by-lab"></canvas>
+              </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <div class="flex items-center justify-between mb-4">
+                <h4 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <i data-lucide="trending-up" class="w-4 h-4 text-slate-500"></i>
+                  <span>Frecuencia y Tendencia Diaria</span>
+                </h4>
+                <span class="text-xs text-slate-400">Permitidos vs Denegados</span>
+              </div>
+              <div class="h-64 relative">
+                <canvas id="chart-by-day"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tabla de Últimos Intentos -->
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="p-4 border-b border-slate-200 flex items-center justify-between">
+              <h4 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <i data-lucide="history" class="w-4 h-4 text-slate-500"></i>
+                <span>Últimos Intentos de Acceso</span>
+                <span class="text-[10px] font-normal text-slate-400 ml-1">— más reciente arriba ↑</span>
+              </h4>
+              <div class="flex items-center gap-2">
+                <span id="live-indicator" class="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block"></span>
+                  EN VIVO
+                </span>
+                <span class="text-xs text-slate-400">· se actualiza cada 2 seg</span>
+              </div>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-slate-50 text-slate-600 uppercase font-semibold border-b border-slate-200">
+                  <tr>
+                    <th class="px-4 py-3">Fecha y Hora ↓</th>
+                    <th class="px-4 py-3">Usuario / Matrícula</th>
+                    <th class="px-4 py-3">Laboratorio / Salón</th>
+                    <th class="px-4 py-3">Dispositivo Puerta</th>
+                    <th class="px-4 py-3">Resultado</th>
+                    <th class="px-4 py-3">Motivo</th>
+                  </tr>
+                </thead>
+                <tbody id="table-recent-accesses" class="divide-y divide-slate-100 text-slate-700"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= SECCIÓN 2: DISPOSITIVOS Y PUERTAS ================= -->
+        <section id="section-devices" class="space-y-6 hidden">
+          <div class="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div>
+              <h3 class="text-base font-bold text-slate-900">Nodos de Acceso (Raspberry Pi Zero W)</h3>
+              <p class="text-xs text-slate-500">Monitoreo de estado de cerraduras electromagnéticas y cámaras de puerta</p>
+            </div>
+            <button id="btn-modal-add-device" class="px-4 py-2 bg-slate-900 text-white text-xs font-semibold rounded-lg hover:bg-slate-800 transition flex items-center gap-2">
+              <i data-lucide="plus-circle" class="w-4 h-4"></i>
+              <span>Agregar Dispositivo (Puerta)</span>
+            </button>
+          </div>
+
+          <div id="devices-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+        </section>
+
+        <!-- ================= SECCIÓN 3: LABORATORIOS Y SALONES ================= -->
+        <section id="section-laboratories" class="space-y-6 hidden">
+          <div class="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div>
+              <h3 class="text-base font-bold text-slate-900">Catálogo de Laboratorios y Salones</h3>
+              <p class="text-xs text-slate-500">Agrega, administra y supervisa los espacios del Edificio 6 y Laboratorios STEM</p>
+            </div>
+            <button id="btn-modal-add-lab" class="px-4 py-2 bg-slate-900 text-white text-xs font-semibold rounded-lg hover:bg-slate-800 transition flex items-center gap-2">
+              <i data-lucide="plus-circle" class="w-4 h-4"></i>
+              <span>+ Agregar Laboratorio</span>
+            </button>
+          </div>
+
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-slate-50 text-slate-600 uppercase font-semibold border-b border-slate-200">
+                  <tr>
+                    <th class="px-4 py-3">ID / Clave</th>
+                    <th class="px-4 py-3">Nombre del Laboratorio</th>
+                    <th class="px-4 py-3">Edificio</th>
+                    <th class="px-4 py-3">Carrera Responsable</th>
+                    <th class="px-4 py-3">Capacidad</th>
+                    <th class="px-4 py-3">Puertas Conectadas</th>
+                    <th class="px-4 py-3 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="table-laboratories" class="divide-y divide-slate-100 text-slate-700"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= SECCIÓN 4: HORARIOS Y GRUPOS ================= -->
+        <section id="section-schedules" class="space-y-6 hidden">
+          <div class="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div>
+              <h3 class="text-base font-bold text-slate-900">Programación de Horarios y Grupos</h3>
+              <p class="text-xs text-slate-500">Define los permisos de apertura automática de cada laboratorio según materia y grupo</p>
+            </div>
+            <button id="btn-modal-add-schedule" class="px-4 py-2 bg-slate-900 text-white text-xs font-semibold rounded-lg hover:bg-slate-800 transition flex items-center gap-1.5">
+              <i data-lucide="calendar-plus" class="w-4 h-4"></i>
+              <span>Agregar Horario</span>
+            </button>
+          </div>
+
+          <div class="flex items-center gap-4 bg-white p-3 rounded-lg border border-slate-200">
+            <span class="text-xs font-semibold text-slate-500">Filtrar por Laboratorio:</span>
+            <select id="filter-schedule-lab" class="text-xs bg-slate-50 border border-slate-300 rounded-md p-1.5">
+              <option value="todos">Todos los laboratorios</option>
+            </select>
+          </div>
+
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-slate-50 text-slate-600 uppercase font-semibold border-b border-slate-200">
+                  <tr>
+                    <th class="px-4 py-3">Día</th>
+                    <th class="px-4 py-3">Horario</th>
+                    <th class="px-4 py-3">Laboratorio / Salón</th>
+                    <th class="px-4 py-3">Grupo / Carrera</th>
+                    <th class="px-4 py-3">Materia</th>
+                    <th class="px-4 py-3">Docente Titular</th>
+                    <th class="px-4 py-3 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="table-schedules" class="divide-y divide-slate-100 text-slate-700"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= SECCIÓN 5: ALUMNOS ================= -->
+        <section id="section-students" class="space-y-6 hidden">
+          <div class="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div>
+              <h3 class="text-base font-bold text-slate-900">Padrón de Alumnos Registrados</h3>
+              <p class="text-xs text-slate-500">Administra matrículas, grupos asignados y registro de metadatos faciales (sin fotos)</p>
+            </div>
+            <button id="btn-modal-add-student" class="px-4 py-2 bg-slate-900 text-white text-xs font-semibold rounded-lg hover:bg-slate-800 transition flex items-center gap-2">
+              <i data-lucide="user-plus" class="w-4 h-4"></i>
+              <span>Registrar Alumno</span>
+            </button>
+          </div>
+
+          <div class="flex items-center gap-3 bg-white p-3 rounded-lg border border-slate-200">
+            <i data-lucide="search" class="w-4 h-4 text-slate-400"></i>
+            <input type="text" id="search-student" placeholder="Buscar por nombre o matrícula..." class="w-full text-xs border-none focus:outline-none bg-transparent">
+          </div>
+
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-slate-50 text-slate-600 uppercase font-semibold border-b border-slate-200">
+                  <tr>
+                    <th class="px-4 py-3">Matrícula</th>
+                    <th class="px-4 py-3">Nombre Completo</th>
+                    <th class="px-4 py-3">Carrera</th>
+                    <th class="px-4 py-3">Grupo</th>
+                    <th class="px-4 py-3">Rostro Registrado</th>
+                    <th class="px-4 py-3">Estado</th>
+                    <th class="px-4 py-3 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="table-students" class="divide-y divide-slate-100 text-slate-700"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= SECCIÓN 6: MAESTROS Y PERSONAL ================= -->
+        <section id="section-teachers" class="space-y-6 hidden">
+          <div class="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div>
+              <h3 class="text-base font-bold text-slate-900">Docentes y Personal Institucional</h3>
+              <p class="text-xs text-slate-500">Pase de asistencia docente automático (RF-03) y bitácora de limpieza (RF-04)</p>
+            </div>
+          </div>
+
+          <div class="flex border-b border-slate-200 space-x-6 text-sm font-semibold">
+            <button id="tab-docentes" class="pb-2 text-slate-900 border-b-2 border-slate-900">Docentes Titulares</button>
+            <button id="tab-limpieza" class="pb-2 text-slate-400 hover:text-slate-700">Personal de Limpieza & Mantenimiento</button>
+          </div>
+
+          <div id="container-docentes" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-50 text-slate-600 uppercase font-semibold border-b border-slate-200">
+                <tr>
+                  <th class="px-4 py-3">Clave Docente</th>
+                  <th class="px-4 py-3">Nombre Completo</th>
+                  <th class="px-4 py-3">Carrera / Área</th>
+                  <th class="px-4 py-3">Rostro Registrado</th>
+                  <th class="px-4 py-3">Estado</th>
+                  <th class="px-4 py-3 text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="table-docentes" class="divide-y divide-slate-100 text-slate-700"></tbody>
+            </table>
+          </div>
+
+          <div id="container-limpieza" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden hidden space-y-4 p-4">
+            <h4 class="text-xs font-bold uppercase text-slate-600">Bitácora de Entradas y Salidas de Limpieza (RF-04)</h4>
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-50 text-slate-600 uppercase font-semibold border-b border-slate-200">
+                <tr>
+                  <th class="px-4 py-3">Personal</th>
+                  <th class="px-4 py-3">Laboratorio / Salón</th>
+                  <th class="px-4 py-3">Hora Entrada</th>
+                  <th class="px-4 py-3">Hora Salida</th>
+                  <th class="px-4 py-3">Estado</th>
+                </tr>
+              </thead>
+              <tbody id="table-limpieza" class="divide-y divide-slate-100 text-slate-700"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ================= SECCIÓN 7: REPORTES ================= -->
+        <section id="section-reports" class="space-y-6 hidden">
+          <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+            <div>
+              <h3 class="text-base font-bold text-slate-900">Generador de Reportes de Acceso</h3>
+              <p class="text-xs text-slate-500">Seleccione los criterios de búsqueda para consultar o descargar el historial para auditoría</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div>
+                <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Laboratorio</label>
+                <select id="report-filter-lab" class="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2.5">
+                  <option value="todos">Todos los laboratorios</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Fecha Inicio</label>
+                <input type="date" id="report-filter-start" class="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2">
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Fecha Fin</label>
+                <input type="date" id="report-filter-end" class="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2">
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Resultado</label>
+                <select id="report-filter-result" class="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2.5">
+                  <option value="todos">Todos (Permitidos y Denegados)</option>
+                  <option value="permitido">Solo Permitidos</option>
+                  <option value="denegado">Solo Denegados</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-3 pt-2">
+              <button id="btn-generate-report" class="px-5 py-2.5 bg-slate-900 text-white text-xs font-semibold rounded-lg hover:bg-slate-800 transition flex items-center gap-2">
+                <i data-lucide="search" class="w-4 h-4"></i>
+                <span>Generar Reporte en Pantalla</span>
+              </button>
+
+              <button id="btn-export-csv" class="px-5 py-2.5 bg-white text-slate-800 text-xs font-semibold rounded-lg hover:bg-slate-100 border border-slate-300 transition flex items-center gap-2">
+                <i data-lucide="download" class="w-4 h-4"></i>
+                <span>Descargar Archivo CSV</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="p-4 border-b border-slate-200 flex items-center justify-between">
+              <span id="report-results-count" class="text-xs font-bold text-slate-600">0 registros encontrados</span>
+            </div>
+            <div class="overflow-x-auto max-h-[500px]">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-slate-50 text-slate-600 uppercase font-semibold border-b border-slate-200 sticky top-0">
+                  <tr>
+                    <th class="px-4 py-3">Fecha y Hora</th>
+                    <th class="px-4 py-3">Laboratorio</th>
+                    <th class="px-4 py-3">Usuario</th>
+                    <th class="px-4 py-3">Tipo</th>
+                    <th class="px-4 py-3">Matrícula/Clave</th>
+                    <th class="px-4 py-3">Resultado</th>
+                    <th class="px-4 py-3">Motivo</th>
+                    <th class="px-4 py-3">Offline</th>
+                  </tr>
+                </thead>
+                <tbody id="table-report-results" class="divide-y divide-slate-100 text-slate-700"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+
+    <!-- ================= VISTA DE ROL: PORTAL DEL DOCENTE ================= -->
+    <div id="portal-teacher-view" class="flex-1 flex flex-col bg-slate-50 overflow-y-auto hidden">
+      <header class="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between sticky top-0 z-20 shadow-sm">
+        <div class="flex items-center gap-3">
+          <div class="p-2 bg-slate-900 rounded-lg text-white">
+            <i data-lucide="briefcase" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h2 class="text-lg font-bold text-slate-900">Portal del Docente • Pase de Lista Digital</h2>
+            <p class="text-xs text-slate-500 font-medium">ITSOEH - Edificio 6 y Laboratorios STEM</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-4">
+          <div class="text-right">
+            <p id="docente-portal-name" class="text-sm font-bold text-slate-900">Dr. Martín Gómez Pérez</p>
+            <p id="docente-portal-clave" class="text-xs text-slate-500 font-mono">DOC-ITSOEH-7489</p>
+          </div>
+          <button class="btn-logout-action px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg transition flex items-center gap-1.5 border border-slate-300">
+            <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+            <span>Cerrar Sesión</span>
+          </button>
+        </div>
+      </header>
+
+      <div class="p-6 max-w-6xl mx-auto space-y-6 w-full">
+        <!-- Banner Informativo -->
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+          <div class="space-y-1">
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold badge-status-online">
+              <span class="status-dot online"></span> Reconocimiento Facial Activo
+            </span>
+            <h3 class="text-base font-bold text-slate-900">Pase de Asistencia Automático (RF-03, RF-06)</h3>
+            <p class="text-xs text-slate-500">Al presentarte en la puerta de tu laboratorio, tu entrada confirma que impartiste tu clase y registra a tus alumnos sin listas de papel.</p>
+          </div>
+          <div class="text-right text-xs">
+            <span class="text-slate-400">Área Académica:</span>
+            <p id="docente-portal-carrera" class="font-bold text-slate-800">Ingeniería Mecatrónica</p>
+          </div>
+        </div>
+
+        <!-- Clases Asignadas -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="p-4 border-b border-slate-200 flex items-center justify-between">
+            <h4 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <i data-lucide="calendar" class="w-4 h-4 text-slate-500"></i>
+              <span>Mis Clases y Laboratorios Asignados</span>
+            </h4>
+          </div>
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-50 text-slate-600 uppercase font-semibold border-b border-slate-200">
+              <tr>
+                <th class="px-4 py-3">Día</th>
+                <th class="px-4 py-3">Horario</th>
+                <th class="px-4 py-3">Materia</th>
+                <th class="px-4 py-3">Grupo</th>
+                <th class="px-4 py-3">Laboratorio Asignado</th>
+              </tr>
+            </thead>
+            <tbody id="table-portal-teacher-classes" class="divide-y divide-slate-100 text-slate-700"></tbody>
+          </table>
+        </div>
+
+        <!-- Pase de Lista en Tiempo Real de Alumnos -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="p-4 border-b border-slate-200 flex items-center justify-between">
+            <h4 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <i data-lucide="users" class="w-4 h-4 text-slate-500"></i>
+              <span>Pase de Lista Digital en Vivo de Mis Alumnos (RF-06)</span>
+            </h4>
+            <span class="text-xs text-slate-400">Actualizado por cámara de puerta</span>
+          </div>
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-50 text-slate-600 uppercase font-semibold border-b border-slate-200">
+              <tr>
+                <th class="px-4 py-3">Fecha y Hora de Acceso</th>
+                <th class="px-4 py-3">Alumno</th>
+                <th class="px-4 py-3">Grupo</th>
+                <th class="px-4 py-3">Laboratorio</th>
+                <th class="px-4 py-3">Estado de Asistencia</th>
+              </tr>
+            </thead>
+            <tbody id="table-portal-teacher-attendance" class="divide-y divide-slate-100 text-slate-700"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= VISTA DE ROL: PORTAL DEL ALUMNO ================= -->
+    <div id="portal-student-view" class="flex-1 flex flex-col bg-slate-50 overflow-y-auto hidden">
+      <header class="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between sticky top-0 z-20 shadow-sm">
+        <div class="flex items-center gap-3">
+          <div class="p-2 bg-slate-900 rounded-lg text-white">
+            <i data-lucide="graduation-cap" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h2 class="text-lg font-bold text-slate-900">Portal del Estudiante • Pase de Lista</h2>
+            <p class="text-xs text-slate-500 font-medium">ITSOEH - Plataforma NeoAccess</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-4">
+          <div class="text-right">
+            <p id="alumno-portal-name" class="text-sm font-bold text-slate-900">Carlos Alberto Mendoza</p>
+            <p id="alumno-portal-matricula" class="text-xs text-slate-500 font-mono">22030015</p>
+          </div>
+          <button class="btn-logout-action px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg transition flex items-center gap-1.5 border border-slate-300">
+            <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+            <span>Cerrar Sesión</span>
+          </button>
+        </div>
+      </header>
+
+      <div class="p-6 max-w-5xl mx-auto space-y-6 w-full">
+        <!-- Credencial Digital del Alumno -->
+        <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
+          <div>
+            <span class="text-xs text-slate-400 font-semibold uppercase">Matrícula Escolar</span>
+            <p id="alumno-portal-matricula-card" class="text-lg font-mono font-bold text-slate-900 mt-1">22030015</p>
+          </div>
+          <div>
+            <span class="text-xs text-slate-400 font-semibold uppercase">Grupo Asignado</span>
+            <p id="alumno-portal-grupo" class="text-base font-bold text-slate-800 mt-1">MEC-801</p>
+          </div>
+          <div>
+            <span class="text-xs text-slate-400 font-semibold uppercase">Carrera</span>
+            <p id="alumno-portal-carrera" class="text-sm font-semibold text-slate-800 mt-1">Ingeniería Mecatrónica</p>
+          </div>
+          <div id="alumno-portal-face-status" class="text-right"></div>
+        </div>
+
+        <!-- Horarios y Laboratorios Autorizados (RF-02) -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="p-4 border-b border-slate-200 flex items-center justify-between">
+            <h4 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <i data-lucide="calendar-check" class="w-4 h-4 text-slate-500"></i>
+              <span>Mis Horarios y Laboratorios Autorizados (RF-02)</span>
+            </h4>
+            <span class="text-xs text-slate-500">Solo se permite acceso en estos bloques</span>
+          </div>
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-50 text-slate-600 uppercase font-semibold border-b border-slate-200">
+              <tr>
+                <th class="px-4 py-3">Día</th>
+                <th class="px-4 py-3">Horario</th>
+                <th class="px-4 py-3">Materia</th>
+                <th class="px-4 py-3">Laboratorio Autorizado</th>
+                <th class="px-4 py-3">Docente Titular</th>
+              </tr>
+            </thead>
+            <tbody id="table-portal-student-schedules" class="divide-y divide-slate-100 text-slate-700"></tbody>
+          </table>
+        </div>
+
+        <!-- Mi Historial de Asistencias (RF-06) -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="p-4 border-b border-slate-200">
+            <h4 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <i data-lucide="clock" class="w-4 h-4 text-slate-500"></i>
+              <span>Mi Historial de Asistencias y Entradas a Laboratorio (RF-06)</span>
+            </h4>
+          </div>
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-50 text-slate-600 uppercase font-semibold border-b border-slate-200">
+              <tr>
+                <th class="px-4 py-3">Fecha y Hora</th>
+                <th class="px-4 py-3">Laboratorio</th>
+                <th class="px-4 py-3">Pase de Lista</th>
+                <th class="px-4 py-3">Motivo / Detalle</th>
+              </tr>
+            </thead>
+            <tbody id="table-portal-student-history" class="divide-y divide-slate-100 text-slate-700"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= VISTA DE ROL: PORTAL DE LIMPIEZA ================= -->
+    <div id="portal-cleaning-view" class="flex-1 flex flex-col bg-slate-50 overflow-y-auto hidden">
+      <header class="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between sticky top-0 z-20 shadow-sm">
+        <div class="flex items-center gap-3">
+          <div class="p-2 bg-slate-900 rounded-lg text-white">
+            <i data-lucide="sparkles" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h2 class="text-lg font-bold text-slate-900">Portal de Limpieza & Mantenimiento</h2>
+            <p class="text-xs text-slate-500 font-medium">Servicios Generales ITSOEH • Bitácora Digital</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-4">
+          <div class="text-right">
+            <p id="limpieza-portal-name" class="text-sm font-bold text-slate-900">Don Pedro Jiménez</p>
+            <p id="limpieza-portal-clave" class="text-xs text-slate-500 font-mono">LIM-ITSOEH-104</p>
+          </div>
+          <button class="btn-logout-action px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg transition flex items-center gap-1.5 border border-slate-300">
+            <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+            <span>Cerrar Sesión</span>
+          </button>
+        </div>
+      </header>
+
+      <div class="p-6 max-w-5xl mx-auto space-y-6 w-full">
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <h3 class="text-base font-bold text-slate-900">Bitácora de Salones Atendidos (RF-04)</h3>
+          <p class="text-xs text-slate-500">Al presentarte en cualquier laboratorio del Edificio 6 o STEM, la puerta registra automáticamente tu hora de inicio de aseo y tu hora de salida.</p>
+        </div>
+
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-50 text-slate-600 uppercase font-semibold border-b border-slate-200">
+              <tr>
+                <th class="px-4 py-3">Laboratorio / Salón</th>
+                <th class="px-4 py-3">Hora de Entrada</th>
+                <th class="px-4 py-3">Hora de Salida</th>
+                <th class="px-4 py-3">Estado de Turno</th>
+              </tr>
+            </thead>
+            <tbody id="table-portal-cleaning-logs" class="divide-y divide-slate-100 text-slate-700"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ================= MODAL: AGREGAR LABORATORIO ================= -->
+  <div id="modal-add-lab" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay p-4 hidden">
+    <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 border border-slate-200 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+        <div class="flex items-center gap-2">
+          <div class="p-2 bg-slate-100 rounded-lg text-slate-800">
+            <i data-lucide="door-open" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-sm text-slate-900">Agregar Nuevo Laboratorio</h3>
+            <p class="text-xs text-slate-500">Registra un nuevo espacio físico del ITSOEH</p>
+          </div>
+        </div>
+        <button onclick="closeModal('modal-add-lab')" class="text-slate-400 hover:text-slate-700">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form id="form-add-lab" class="space-y-3 text-xs">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Clave o ID del Laboratorio *</label>
+          <input type="text" id="lab-new-id" required placeholder="Ej: LAB-STEM-04 o LAB-ED6-03" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg uppercase">
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Nombre Completo del Laboratorio *</label>
+          <input type="text" id="lab-new-name" required placeholder="Ej: Lab de Visión Computacional y Control" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Edificio *</label>
+            <select id="lab-new-building" required class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+              <option value="Laboratorios STEM">Laboratorios STEM</option>
+              <option value="Edificio 6">Edificio 6</option>
+              <option value="Edificio 2">Edificio 2</option>
+              <option value="Edificio Central">Edificio Central</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Capacidad (Alumnos)</label>
+            <input type="number" id="lab-new-capacity" value="30" min="5" max="100" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Carrera Responsable *</label>
+          <select id="lab-new-career" required class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+            <option value="Ingeniería Mecatrónica">Ingeniería Mecatrónica</option>
+            <option value="Ingeniería en Sistemas Computacionales">Ingeniería en Sistemas Computacionales</option>
+            <option value="Ingeniería Industrial">Ingeniería Industrial</option>
+            <option value="Ingeniería Electromecánica">Ingeniería Electromecánica</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Descripción / Equipamiento</label>
+          <textarea id="lab-new-desc" rows="2" placeholder="Ej: Equipado con cámaras industriales, estaciones de GPU y PLC" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg"></textarea>
+        </div>
+
+        <div class="pt-3 border-t border-slate-200 flex justify-end gap-2">
+          <button type="button" onclick="closeModal('modal-add-lab')" class="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200">Cancelar</button>
+          <button type="submit" class="px-4 py-1.5 bg-slate-900 text-white font-semibold rounded-lg hover:bg-slate-800">Guardar Laboratorio</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: CONECTAR RASPBERRY PI ZERO W ================= -->
+  <div id="modal-connect-rpi" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay p-4 hidden">
+    <div class="bg-white rounded-xl shadow-2xl max-w-xl w-full p-6 border border-slate-200 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+        <div class="flex items-center gap-2">
+          <div class="p-2 bg-slate-100 rounded-lg text-slate-800">
+            <i data-lucide="cpu" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-sm text-slate-900">Vincular Raspberry Pi Zero W</h3>
+            <p id="modal-rpi-dev-name" class="text-xs text-slate-500">Configuración de conectividad</p>
+          </div>
+        </div>
+        <button onclick="closeModal('modal-connect-rpi')" class="text-slate-400 hover:text-slate-700">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3 text-xs text-slate-700">
+        <p>Para conectar tu Raspberry Pi Zero W física a este laboratorio:</p>
+
+        <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2">
+          <p class="font-semibold text-slate-800">1. Credenciales generadas para el dispositivo:</p>
+          <div class="grid grid-cols-2 gap-2 text-[11px]">
+            <div><span class="text-slate-500">ID Dispositivo:</span> <code id="modal-rpi-id" class="font-bold text-slate-900">--</code></div>
+            <div><span class="text-slate-500">Token API:</span> <code id="modal-rpi-token" class="font-bold text-slate-900 bg-white px-1.5 py-0.5 rounded border">--</code></div>
+          </div>
+        </div>
+
+        <div class="space-y-2">
+          <p class="font-semibold text-slate-800">2. Descargar archivo de configuración automática:</p>
+          <a id="modal-rpi-download-btn" href="#" download class="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-800 text-white rounded-lg hover:bg-slate-900 text-xs">
+            <i data-lucide="download" class="w-3.5 h-3.5"></i>
+            <span>Descargar config.json para Raspberry Pi</span>
+          </a>
+          <p class="text-[11px] text-slate-500">Guarda este archivo dentro de la carpeta <code>raspberry_pi/</code> en tu Raspberry Pi Zero W.</p>
+        </div>
+
+        <div class="space-y-2">
+          <p class="font-semibold text-slate-800">3. Comprobar la conexión real ejecutando en la Raspberry Pi:</p>
+          <pre class="bg-slate-900 text-slate-200 p-3 rounded-lg text-[11px] overflow-x-auto font-mono">python3 test_conexion.py</pre>
+        </div>
+
+        <div class="bg-amber-50 border border-amber-200 p-3 rounded-lg text-amber-800 text-[11px]">
+          <strong>Aviso de red local (RF-22):</strong> La Raspberry Pi Zero W y tu computadora deben estar conectadas a la misma red Wi-Fi del ITSOEH.
+        </div>
+      </div>
+
+      <div class="pt-3 border-t border-slate-200 flex justify-end">
+        <button onclick="closeModal('modal-connect-rpi')" class="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold">
+          Entendido
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: AGREGAR DISPOSITIVO ================= -->
+  <div id="modal-add-device" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay p-4 hidden">
+    <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 border border-slate-200 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+        <h3 class="font-bold text-sm text-slate-900">Registrar Nuevo Dispositivo (Puerta)</h3>
+        <button onclick="closeModal('modal-add-device')" class="text-slate-400 hover:text-slate-700">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form id="form-add-device" class="space-y-3 text-xs">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Identificador de Puerta / Dispositivo *</label>
+          <input type="text" id="dev-new-id" required placeholder="DEV-PI-STEM04" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg uppercase">
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Nombre Descriptivo *</label>
+          <input type="text" id="dev-new-name" required placeholder="RPi Zero W - Puerta Principal Lab" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Laboratorio Asignado *</label>
+          <select id="dev-new-lab" required class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg"></select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Dirección IP Estática/Local</label>
+            <input type="text" id="dev-new-ip" value="192.168.1.120" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Intervalo Latido (Segundos)</label>
+            <input type="number" id="dev-new-interval" value="300" min="60" max="600" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+          </div>
+        </div>
+
+        <div class="pt-3 border-t border-slate-200 flex justify-end gap-2">
+          <button type="button" onclick="closeModal('modal-add-device')" class="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200">Cancelar</button>
+          <button type="submit" class="px-4 py-1.5 bg-slate-900 text-white font-semibold rounded-lg hover:bg-slate-800">Guardar Dispositivo</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: AGREGAR ALUMNO ================= -->
+  <div id="modal-add-student" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay p-4 hidden">
+    <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 border border-slate-200 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+        <h3 class="font-bold text-sm text-slate-900">Registrar Nuevo Alumno</h3>
+        <button onclick="closeModal('modal-add-student')" class="text-slate-400 hover:text-slate-700">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form id="form-add-student" class="space-y-3 text-xs">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">ID Único de Sistema *</label>
+          <input type="text" id="student-new-id" required placeholder="ALU-008" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg uppercase">
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Nombre Completo *</label>
+          <input type="text" id="student-new-name" required placeholder="Ej: Juan Daniel Morales López" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Número de Control / Matrícula *</label>
+            <input type="text" id="student-new-matricula" required placeholder="22030200" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Grupo Asignado *</label>
+            <input type="text" id="student-new-group" required placeholder="MEC-801" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg uppercase">
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Carrera *</label>
+          <select id="student-new-career" required class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+            <option value="Ingeniería Mecatrónica">Ingeniería Mecatrónica</option>
+            <option value="Ingeniería en Sistemas Computacionales">Ingeniería en Sistemas Computacionales</option>
+            <option value="Ingeniería Industrial">Ingeniería Industrial</option>
+            <option value="Ingeniería Electromecánica">Ingeniería Electromecánica</option>
+          </select>
+        </div>
+
+        <div class="pt-3 border-t border-slate-200 flex justify-end gap-2">
+          <button type="button" onclick="closeModal('modal-add-student')" class="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200">Cancelar</button>
+          <button type="submit" class="px-4 py-1.5 bg-slate-900 text-white font-semibold rounded-lg hover:bg-slate-800">Registrar Alumno</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: AGREGAR HORARIO ================= -->
+  <div id="modal-add-schedule" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay p-4 hidden">
+    <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 border border-slate-200 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+        <h3 class="font-bold text-sm text-slate-900">Programar Nuevo Horario de Clase</h3>
+        <button onclick="closeModal('modal-add-schedule')" class="text-slate-400 hover:text-slate-700">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form id="form-add-schedule" class="space-y-3 text-xs">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Laboratorio Asignado *</label>
+          <select id="schedule-new-lab" required class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg"></select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Grupo *</label>
+            <input type="text" id="schedule-new-group" required placeholder="MEC-801" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg uppercase">
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Clave Docente *</label>
+            <input type="text" id="schedule-new-teacher" required placeholder="DOC-001" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg uppercase">
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Nombre de la Materia *</label>
+          <input type="text" id="schedule-new-subject" required placeholder="Robótica Móvil y Visión" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+        </div>
+
+        <div class="grid grid-cols-3 gap-2">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Día *</label>
+            <select id="schedule-new-day" required class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+              <option value="Lunes">Lunes</option>
+              <option value="Martes">Martes</option>
+              <option value="Miércoles">Miércoles</option>
+              <option value="Jueves">Jueves</option>
+              <option value="Viernes">Viernes</option>
+              <option value="Sábado">Sábado</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Hora Inicio *</label>
+            <input type="time" id="schedule-new-start" value="08:00" required class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Hora Fin *</label>
+            <input type="time" id="schedule-new-end" value="10:00" required class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+          </div>
+        </div>
+
+        <div class="pt-3 border-t border-slate-200 flex justify-end gap-2">
+          <button type="button" onclick="closeModal('modal-add-schedule')" class="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200">Cancelar</button>
+          <button type="submit" class="px-4 py-1.5 bg-slate-900 text-white font-semibold rounded-lg hover:bg-slate-800">Guardar Horario</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: REGISTRAR ROSTRO ================= -->
+  <div id="modal-face-capture" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay p-4 hidden">
+    <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6 border border-slate-200 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+        <div>
+          <h3 class="font-bold text-sm text-slate-900">Registro de Metadatos Faciales (RF-15)</h3>
+          <p id="modal-face-user-name" class="text-xs text-slate-500">Usuario: --</p>
+        </div>
+        <button onclick="closeModal('modal-face-capture')" class="text-slate-400 hover:text-slate-700">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="p-3 bg-slate-100 rounded-lg border border-slate-200 text-[11px] text-slate-600 flex items-start gap-2">
+        <i data-lucide="shield" class="w-4 h-4 text-slate-700 shrink-0 mt-0.5"></i>
+        <span><strong>Privacidad garantizada (RF-07):</strong> Esta herramienta extrae un vector numérico de 128 flotantes (embedding matemático). La fotografía nunca se almacena en el disco ni en la base de datos.</span>
+      </div>
+
+      <div class="space-y-3">
+        <div class="relative bg-slate-900 rounded-lg overflow-hidden h-52 flex items-center justify-center">
+          <video id="webcam-preview" autoplay playsinline class="w-full h-full object-cover hidden"></video>
+          <canvas id="face-canvas" class="hidden"></canvas>
+          <div id="camera-placeholder" class="text-center text-slate-400 space-y-2">
+            <i data-lucide="camera" class="w-8 h-8 mx-auto"></i>
+            <p class="text-xs">Haga clic en Iniciar Cámara o Generar Vector Matemático</p>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between gap-2">
+          <button id="btn-start-camera" type="button" class="px-3 py-1.5 bg-slate-100 text-slate-800 text-xs rounded-lg hover:bg-slate-200 border border-slate-300 flex items-center gap-1.5">
+            <i data-lucide="video" class="w-3.5 h-3.5"></i>
+            <span>Encender Cámara</span>
+          </button>
+          
+          <button id="btn-capture-and-extract" type="button" class="px-4 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-lg hover:bg-slate-800 flex items-center gap-1.5">
+            <i data-lucide="cpu" class="w-3.5 h-3.5"></i>
+            <span>Extraer y Guardar Vector 128-d</span>
+          </button>
+        </div>
+
+        <div id="vector-status" class="hidden text-xs p-2 rounded bg-slate-50 border text-slate-700 font-mono"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts modulares de la aplicación con cache-busting -->
+  <script src="/scripts/app.js?v=20261124_01"></script>
+  <script src="/scripts/laboratories.js?v=20261124_01"></script>
+  <script src="/scripts/metrics.js?v=20261124_01"></script>
+  <script src="/scripts/devices.js?v=20261124_01"></script>
+  <script src="/scripts/schedules.js?v=20261124_01"></script>
+  <script src="/scripts/users.js?v=20261124_01"></script>
+  <script src="/scripts/reports.js?v=20261124_01"></script>
+</body>
+</html>

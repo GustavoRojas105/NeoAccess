@@ -1,0 +1,121 @@
+/*
+ * NeoAccess - Paleta Neutral y Estilos de Interfaz
+ * Ubicación: C:\Users\gr321\Desktop\NeoAccess\frontend\styles\style.css
+ * Requerimiento de diseño (Sección 9):
+ * "El fondo y los elementos generales usan colores neutros;
+ *  el verde, el amarillo y el rojo se reservan únicamente para indicar estados."
+ */
+
+:root {
+  --bg-primary: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-sidebar: #0f172a;
+  --bg-sidebar-hover: #1e293b;
+  --text-main: #1e293b;
+  --text-muted: #64748b;
+  --border-color: #e2e8f0;
+  --neutral-accent: #334155;
+  --neutral-accent-light: #f1f5f9;
+
+  /* Estados reservados estrictamente para dispositivos y accesos */
+  --status-online: #10b981;       /* Verde: En línea / Permitido */
+  --status-intermittent: #f59e0b; /* Amarillo: Intermitente */
+  --status-offline: #ef4444;      /* Rojo: Fuera de línea / Denegado */
+  --status-disabled: #94a3b8;     /* Gris: Desactivado */
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-main);
+  overflow-x: hidden;
+}
+
+/* Indicadores de Estado Reservados */
+.badge-status-online {
+  background-color: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+.badge-status-intermittent {
+  background-color: #fffbeb;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+.badge-status-offline {
+  background-color: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+.badge-status-disabled {
+  background-color: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 6px;
+}
+.status-dot.online { background-color: var(--status-online); box-shadow: 0 0 8px rgba(16, 185, 129, 0.6); }
+.status-dot.intermittent { background-color: var(--status-intermittent); box-shadow: 0 0 8px rgba(245, 158, 11, 0.6); }
+.status-dot.offline { background-color: var(--status-offline); box-shadow: 0 0 8px rgba(239, 68, 68, 0.6); }
+.status-dot.disabled { background-color: var(--status-disabled); }
+
+/* Scrollbars sobrios */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Animaciones y Transiciones */
+.fade-in {
+  animation: fadeIn 0.25s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Modals */
+.modal-overlay {
+  background-color: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(2px);
+}
+
+/* ── Highlight de fila nueva en la tabla de accesos recientes ── */
+@keyframes newRowFlash {
+  0%   { background-color: #fef9c3; }   /* amarillo tenue */
+  60%  { background-color: #fef9c3; }
+  100% { background-color: transparent; }
+}
+
+.animate-pulse-once {
+  animation: newRowFlash 2s ease-out forwards;
+}
+
+/* Tabla de accesos: cabecera "MÁS RECIENTE ↑" visible */
+#table-recent-accesses tr:first-child td {
+  border-top: 2px solid #e2e8f0;
+}
+

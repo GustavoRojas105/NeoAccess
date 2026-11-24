@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="es" style="background-color:#0f172a;min-height:100%;margin:0;padding:0;">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NeoAccess | Inicio de Sesión ITSOEH</title>
+  <!-- Fondo sólido instantáneo ANTES de que cargue cualquier CSS o JS -->
+  <style>
+    html, body {
+      background-color: #0f172a !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      min-height: 100vh !important;
+    }
+  </style>
+  <!-- Bloquear cualquier contenido previo en caché antes de cargar scripts -->
+  <script>
+    // Limpiar token SOLO si venimos de un logout (parámetro ?logout=1)
+    // Si ya tiene sesión activa Y no venimos de logout, redirigir al dashboard
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('logout') !== '1') {
+      if (localStorage.getItem("neoaccess_token") && localStorage.getItem("neoaccess_user")) {
+        window.location.replace("/");
+      }
+    }
+    // Pintar fondo oscuro de inmediato para ocultar cualquier flash de página anterior
+    document.documentElement.style.backgroundColor = '#0f172a';
+    document.documentElement.style.minHeight = '100vh';
+  </script>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="/styles/style.css?v=20261121_03">
+</head>
+<body class="bg-slate-900 text-slate-800 antialiased min-h-screen flex items-center justify-center p-4">
+
+  <!-- Tarjeta de Inicio de Sesión Limpia y Autónoma -->
+  <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 border border-slate-200">
+    <div class="text-center mb-6">
+      <div class="inline-flex items-center justify-center w-14 h-14 rounded-full bg-slate-100 text-slate-800 mb-3 border border-slate-200 shadow-sm">
+        <i data-lucide="shield-check" class="w-7 h-7 text-slate-900"></i>
+      </div>
+      <h2 class="text-2xl font-bold text-slate-900 tracking-tight">NeoAccess ITSOEH</h2>
+      <p class="text-xs text-slate-500 uppercase tracking-wider font-semibold mt-1">Control de Acceso Facial • Edificio 6 y STEM</p>
+    </div>
+
+    <!-- Selector Rápido de Credenciales para Pruebas de Roles -->
+    <div class="mb-5 p-3 bg-slate-50 rounded-xl border border-slate-200">
+      <p class="text-[10px] font-bold uppercase text-slate-500 mb-2 text-center tracking-wide">Seleccionar rol de prueba (1 Clic):</p>
+      <div class="grid grid-cols-2 gap-2 text-xs">
+        <button type="button" class="quick-login-btn px-2.5 py-2 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg text-slate-800 font-medium text-left truncate flex items-center gap-1.5 transition shadow-xs"
+          data-u="admin" data-p="admin123">
+          <span>👔</span> <span>Administrador</span>
+        </button>
+        <button type="button" class="quick-login-btn px-2.5 py-2 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg text-slate-800 font-medium text-left truncate flex items-center gap-1.5 transition shadow-xs"
+          data-u="DOC-ITSOEH-7489" data-p="docente123">
+          <span>👨‍🏫</span> <span>Docente</span>
+        </button>
+        <button type="button" class="quick-login-btn px-2.5 py-2 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg text-slate-800 font-medium text-left truncate flex items-center gap-1.5 transition shadow-xs"
+          data-u="22030015" data-p="alumno123">
+          <span>🎓</span> <span>Alumno</span>
+        </button>
+        <button type="button" class="quick-login-btn px-2.5 py-2 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg text-slate-800 font-medium text-left truncate flex items-center gap-1.5 transition shadow-xs"
+          data-u="LIM-ITSOEH-104" data-p="limpieza123">
+          <span>🧹</span> <span>Limpieza</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Alerta de Error -->
+    <div id="login-alert" class="hidden mb-4 p-3 text-xs rounded-lg bg-red-50 text-red-700 border border-red-200 font-medium flex items-center gap-2">
+      <i data-lucide="alert-circle" class="w-4 h-4 text-red-500 shrink-0"></i>
+      <span id="login-alert-text">Usuario o contraseña inválidos</span>
+    </div>
+
+    <!-- Formulario de Acceso -->
+    <form id="form-login" class="space-y-4">
+      <div>
+        <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Usuario / Matrícula / Clave</label>
+        <div class="relative">
+          <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+            <i data-lucide="user" class="w-4 h-4"></i>
+          </span>
+          <input type="text" id="login-username" required placeholder="admin" value="admin"
+            class="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-700 bg-slate-50">
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Contraseña</label>
+        <div class="relative">
+          <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+            <i data-lucide="lock" class="w-4 h-4"></i>
+          </span>
+          <input type="password" id="login-password" required placeholder="••••••••" value="admin123"
+            class="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-700 bg-slate-50">
+        </div>
+      </div>
+
+      <button id="btn-submit" type="submit"
+        class="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg transition duration-150 flex items-center justify-center gap-2 shadow-sm cursor-pointer">
+        <span>Ingresar al Sistema</span>
+        <i data-lucide="arrow-right" class="w-4 h-4"></i>
+      </button>
+    </form>
+
+    <div class="mt-6 pt-3 border-t border-slate-100 text-center text-[11px] text-slate-400">
+      ITSOEH • Maestría en Mecatrónica • Gustavo Antonio Rojas Morales
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      if (window.lucide) {
+        lucide.createIcons();
+      }
+
+      // Relleno rápido de credenciales al hacer clic en los roles de prueba
+      document.querySelectorAll(".quick-login-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const u = btn.getAttribute("data-u");
+          const p = btn.getAttribute("data-p");
+          document.getElementById("login-username").value = u;
+          document.getElementById("login-password").value = p;
+        });
+      });
+
+      // Procesar inicio de sesión
+      const form = document.getElementById("form-login");
+      const alertBox = document.getElementById("login-alert");
+      const alertText = document.getElementById("login-alert-text");
+      const btnSubmit = document.getElementById("btn-submit");
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        alertBox.classList.add("hidden");
+
+        const username = document.getElementById("login-username").value.trim();
+        const password = document.getElementById("login-password").value.trim();
+
+        btnSubmit.disabled = true;
+        btnSubmit.innerHTML = `<span>Verificando credenciales...</span>`;
+
+        try {
+          const res = await fetch("/api/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, password })
+          });
+
+          const data = await res.json();
+          if (!res.ok) {
+            throw new Error(data.detail || "Usuario o contraseña inválidos");
+          }
+
+          localStorage.setItem("neoaccess_token", data.token);
+          localStorage.setItem("neoaccess_user", JSON.stringify(data.admin));
+
+          // Redirección inmediata al dashboard limpio
+          window.location.replace("/");
+
+        } catch (err) {
+          alertText.textContent = err.message || "Error al iniciar sesión";
+          alertBox.classList.remove("hidden");
+          btnSubmit.disabled = false;
+          btnSubmit.innerHTML = `<span>Ingresar al Sistema</span><i data-lucide="arrow-right" class="w-4 h-4"></i>`;
+          if (window.lucide) lucide.createIcons();
+        }
+      });
+    });
+  </script>
+</body>
+</html>

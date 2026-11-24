@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.log
+.env
+.venv/
+venv/
+
+# Base de datos local (contiene hashes de contraseñas y registros de acceso)
+database/*.db
+database/*.db-wal
+database/*.db-shm
+database/*.db-journal
+
+# Datos biométricos y cachés de la Raspberry Pi (NO subir)
+*.pkl
+raspberry_pi/cache_offline.json
+raspberry_pi/cola_offline.json
+raspberry_pi/cola_limpieza.json
+raspberry_pi/limpieza_estado.json
+raspberry_pi/*.tmp
+
+# Configuración con el token del dispositivo (usar config.json.template)
+raspberry_pi/config.json
+
+# Modelos ONNX (~38 MB): se descargan con raspberry_pi/descargar_modelos.py
+raspberry_pi/models/
+
+# Fotos de credenciales y listas reales de alumnos
+tools/fotos_credenciales/*
+!tools/fotos_credenciales/.gitkeep
+tools/plantilla_alumnos.csv
