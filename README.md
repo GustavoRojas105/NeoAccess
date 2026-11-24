@@ -61,8 +61,8 @@ NeoAccess/
 **Requisitos:** Windows 10/11 con [Python 3.10+](https://www.python.org/downloads/) y [Git](https://git-scm.com/).
 
 ```powershell
-git clone https://github.com/GustavoRojas105/NeoAcces.git
-cd NeoAcces
+git clone https://github.com/GustavoRojas105/NeoAccess.git
+cd NeoAccess
 .\run_server.bat
 ```
 
