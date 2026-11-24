@@ -31,7 +31,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
-  <link rel="stylesheet" href="/styles/style.css?v=20261121_03">
+  <link rel="stylesheet" href="/styles/style.css?v=20261124_02">
 </head>
 <body class="bg-slate-900 text-slate-800 antialiased min-h-screen flex items-center justify-center p-4">
 
@@ -45,28 +45,14 @@
       <p class="text-xs text-slate-500 uppercase tracking-wider font-semibold mt-1">Control de Acceso Facial • Edificio 6 y STEM</p>
     </div>
 
-    <!-- Selector Rápido de Credenciales para Pruebas de Roles -->
-    <div class="mb-5 p-3 bg-slate-50 rounded-xl border border-slate-200">
-      <p class="text-[10px] font-bold uppercase text-slate-500 mb-2 text-center tracking-wide">Seleccionar rol de prueba (1 Clic):</p>
-      <div class="grid grid-cols-2 gap-2 text-xs">
-        <button type="button" class="quick-login-btn px-2.5 py-2 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg text-slate-800 font-medium text-left truncate flex items-center gap-1.5 transition shadow-xs"
-          data-u="admin" data-p="admin123">
-          <span>👔</span> <span>Administrador</span>
-        </button>
-        <button type="button" class="quick-login-btn px-2.5 py-2 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg text-slate-800 font-medium text-left truncate flex items-center gap-1.5 transition shadow-xs"
-          data-u="DOC-ITSOEH-7489" data-p="docente123">
-          <span>👨‍🏫</span> <span>Docente</span>
-        </button>
-        <button type="button" class="quick-login-btn px-2.5 py-2 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg text-slate-800 font-medium text-left truncate flex items-center gap-1.5 transition shadow-xs"
-          data-u="22030015" data-p="alumno123">
-          <span>🎓</span> <span>Alumno</span>
-        </button>
-        <button type="button" class="quick-login-btn px-2.5 py-2 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg text-slate-800 font-medium text-left truncate flex items-center gap-1.5 transition shadow-xs"
-          data-u="LIM-ITSOEH-104" data-p="limpieza123">
-          <span>🧹</span> <span>Limpieza</span>
-        </button>
-      </div>
+    <!-- Pestañas: Iniciar sesión / Crear cuenta -->
+    <div class="grid grid-cols-2 gap-1 p-1 mb-5 bg-slate-100 rounded-xl text-sm font-semibold">
+      <button type="button" id="tab-login" class="py-2 rounded-lg bg-white text-slate-900 shadow-sm">Iniciar sesión</button>
+      <button type="button" id="tab-register" class="py-2 rounded-lg text-slate-500">Crear cuenta</button>
     </div>
+
+    <!-- Mensaje informativo (verificación de correo, registro enviado) -->
+    <div id="login-info" class="hidden mb-4 p-3 text-xs rounded-lg border font-medium"></div>
 
     <!-- Alerta de Error -->
     <div id="login-alert" class="hidden mb-4 p-3 text-xs rounded-lg bg-red-50 text-red-700 border border-red-200 font-medium flex items-center gap-2">
@@ -82,7 +68,7 @@
           <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
             <i data-lucide="user" class="w-4 h-4"></i>
           </span>
-          <input type="text" id="login-username" required placeholder="admin" value="admin"
+          <input type="text" id="login-username" required placeholder="Matrícula, clave o usuario" autocomplete="username"
             class="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-700 bg-slate-50">
         </div>
       </div>
@@ -93,7 +79,7 @@
           <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
             <i data-lucide="lock" class="w-4 h-4"></i>
           </span>
-          <input type="password" id="login-password" required placeholder="••••••••" value="admin123"
+          <input type="password" id="login-password" required placeholder="••••••••" autocomplete="current-password"
             class="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-700 bg-slate-50">
         </div>
       </div>
@@ -102,6 +88,63 @@
         class="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg transition duration-150 flex items-center justify-center gap-2 shadow-sm cursor-pointer">
         <span>Ingresar al Sistema</span>
         <i data-lucide="arrow-right" class="w-4 h-4"></i>
+      </button>
+    </form>
+
+    <!-- Formulario de Registro (solo correo institucional) -->
+    <form id="form-register" class="space-y-3 hidden">
+      <p class="text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-2.5">
+        Solo con correo institucional <strong>@itsoeh.edu.mx</strong>. Te enviaremos un enlace para verificarlo.
+        Las cuentas de docente las aprueba el administrador.
+      </p>
+      <div>
+        <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Soy</label>
+        <select id="reg-tipo" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-slate-50">
+          <option value="alumno">Alumno</option>
+          <option value="docente">Docente</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Nombre completo</label>
+        <input type="text" id="reg-nombre" required minlength="3" maxlength="120" autocomplete="name"
+          class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-slate-50">
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label id="reg-matricula-label" class="block text-xs font-semibold uppercase text-slate-600 mb-1">Matrícula</label>
+          <input type="text" id="reg-matricula" required minlength="3" maxlength="40" pattern="[A-Za-z0-9\-]+"
+            class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-slate-50">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Carrera / Área</label>
+          <input type="text" id="reg-carrera" maxlength="120"
+            class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-slate-50">
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Correo institucional</label>
+        <input type="email" id="reg-correo" required maxlength="120" placeholder="tu.nombre@itsoeh.edu.mx" autocomplete="email"
+          class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-slate-50">
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Contraseña</label>
+          <input type="password" id="reg-password" required minlength="8" maxlength="128" autocomplete="new-password"
+            class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-slate-50">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Confirmar</label>
+          <input type="password" id="reg-password2" required minlength="8" maxlength="128" autocomplete="new-password"
+            class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-slate-50">
+        </div>
+      </div>
+      <p class="text-[10px] text-slate-400">Mínimo 8 caracteres.</p>
+      <button id="btn-register" type="submit"
+        class="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg transition flex items-center justify-center gap-2">
+        <span>Crear cuenta y enviar verificación</span>
+      </button>
+      <button id="btn-resend" type="button" class="w-full text-[11px] text-slate-500 hover:text-slate-900 underline">
+        ¿No te llegó el correo? Reenviar enlace
       </button>
     </form>
 
@@ -116,14 +159,109 @@
         lucide.createIcons();
       }
 
-      // Relleno rápido de credenciales al hacer clic en los roles de prueba
-      document.querySelectorAll(".quick-login-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const u = btn.getAttribute("data-u");
-          const p = btn.getAttribute("data-p");
-          document.getElementById("login-username").value = u;
-          document.getElementById("login-password").value = p;
-        });
+      const DOMINIO = "@itsoeh.edu.mx";
+      const formLogin = document.getElementById("form-login");
+      const formRegister = document.getElementById("form-register");
+      const tabLogin = document.getElementById("tab-login");
+      const tabRegister = document.getElementById("tab-register");
+      const infoBox = document.getElementById("login-info");
+
+      function showInfo(text, tipo = "ok") {
+        const estilos = {
+          ok: "bg-emerald-50 text-emerald-800 border-emerald-200",
+          warn: "bg-amber-50 text-amber-800 border-amber-200",
+          error: "bg-red-50 text-red-700 border-red-200",
+        };
+        infoBox.className = "mb-4 p-3 text-xs rounded-lg border font-medium " + estilos[tipo];
+        infoBox.textContent = text;
+      }
+
+      function showTab(cual) {
+        const reg = cual === "register";
+        formRegister.classList.toggle("hidden", !reg);
+        formLogin.classList.toggle("hidden", reg);
+        document.getElementById("login-alert").classList.add("hidden");
+        tabRegister.className = "py-2 rounded-lg " + (reg ? "bg-white text-slate-900 shadow-sm" : "text-slate-500");
+        tabLogin.className = "py-2 rounded-lg " + (!reg ? "bg-white text-slate-900 shadow-sm" : "text-slate-500");
+      }
+      tabLogin.addEventListener("click", () => showTab("login"));
+      tabRegister.addEventListener("click", () => showTab("register"));
+
+      document.getElementById("reg-tipo").addEventListener("change", (e) => {
+        document.getElementById("reg-matricula-label").textContent =
+          e.target.value === "docente" ? "Clave de empleado" : "Matrícula";
+      });
+
+      // Resultado del enlace de verificación (/verificar redirige aquí)
+      const verif = new URLSearchParams(window.location.search).get("verificado");
+      const mensajesVerif = {
+        ok: ["✓ Correo verificado. Ya puedes iniciar sesión.", "ok"],
+        pendiente: ["✓ Correo verificado. Tu cuenta de docente quedó pendiente de aprobación del administrador.", "warn"],
+        expirado: ["El enlace expiró. Regístrate de nuevo o pide que se reenvíe.", "error"],
+        existe: ["Esa matrícula o correo ya tiene una cuenta. Inicia sesión.", "warn"],
+        error: ["Enlace de verificación inválido o ya usado.", "error"],
+      };
+      if (verif && mensajesVerif[verif]) showInfo(...mensajesVerif[verif]);
+
+      formRegister.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const correo = document.getElementById("reg-correo").value.trim().toLowerCase();
+        const pw = document.getElementById("reg-password").value;
+        if (!correo.endsWith(DOMINIO) || correo.indexOf("@") !== correo.length - DOMINIO.length) {
+          showInfo("Solo se permiten correos institucionales " + DOMINIO + ".", "error");
+          return;
+        }
+        if (pw !== document.getElementById("reg-password2").value) {
+          showInfo("Las contraseñas no coinciden.", "error");
+          return;
+        }
+        const btn = document.getElementById("btn-register");
+        btn.disabled = true;
+        try {
+          const res = await fetch("/api/auth/register", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              tipo: document.getElementById("reg-tipo").value,
+              nombre_completo: document.getElementById("reg-nombre").value.trim(),
+              matricula_clave: document.getElementById("reg-matricula").value.trim(),
+              carrera: document.getElementById("reg-carrera").value.trim() || null,
+              correo,
+              password: pw,
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            const det = Array.isArray(data.detail) ? "Revise los datos del formulario." : data.detail;
+            throw new Error(det || "No se pudo registrar.");
+          }
+          formRegister.reset();
+          showTab("login");
+          showInfo(data.message, data.correo_enviado ? "ok" : "warn");
+        } catch (err) {
+          showInfo(err.message, "error");
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      document.getElementById("btn-resend").addEventListener("click", async () => {
+        const correo = document.getElementById("reg-correo").value.trim().toLowerCase();
+        if (!correo.endsWith(DOMINIO)) {
+          showInfo("Escribe tu correo " + DOMINIO + " en el campo de correo y vuelve a pulsar reenviar.", "warn");
+          return;
+        }
+        try {
+          const res = await fetch("/api/auth/resend-verification", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ correo }),
+          });
+          const data = await res.json();
+          showInfo(res.ok ? data.message : (data.detail || "No se pudo reenviar."), res.ok ? "ok" : "error");
+        } catch (err) {
+          showInfo("No se pudo reenviar: " + err.message, "error");
+        }
       });
 
       // Procesar inicio de sesión

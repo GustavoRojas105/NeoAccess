@@ -16,10 +16,11 @@ NeoAccess/
 ├── backend/                       # Servidor central y API REST / IoT (FastAPI)
 │   ├── app.py                     # Endpoints del Dashboard, IoT, registro facial y comandos remotos
 │   ├── auth.py                    # PBKDF2-SHA256 (600k iteraciones), sesiones y límite de intentos
+│   ├── mailer.py                  # Envío de correos de verificación (SMTP)
 │   └── models.py                  # Modelos Pydantic de validación
 │
 ├── database/                      # Base de datos SQLite
-│   ├── database.py                # Esquema (11 tablas) y conexión
+│   ├── database.py                # Esquema (12 tablas) y conexión
 │   ├── seed_data.py               # Datos de prueba del ITSOEH (crea neoaccess.db)
 │   ├── update_passwords.py        # Asigna contraseñas de prueba por rol
 │   └── neoaccess.db               # (se genera solo; no está en Git)
@@ -90,10 +91,35 @@ python backend\app.py
 
 1. En tu computadora, haz doble clic en **`run_server.bat`**.
 2. Abrirá automáticamente el Dashboard en tu navegador: `http://localhost:8000/login`.
-3. Inicia sesión con las credenciales de prueba:
-   - **Administrador:** `admin` / `admin123`
-   - **Docentes, alumnos y limpieza:** su matrícula o clave con `docente123`, `alumno123` o `limpieza123` (tras ejecutar `python database\update_passwords.py`).
+3. Inicia sesión como administrador (`admin` / `admin123`). Las cuentas de prueba de cada rol están en `ACCESOS_PRUEBA.txt`, un archivo local que no se sube a Git; la página de login ya no las muestra.
 4. **Cambia estas contraseñas** antes de usar datos reales.
+
+---
+
+## ✉️ Registro de Cuentas con Correo Institucional
+
+Alumnos y docentes crean su cuenta en la pestaña **Crear cuenta** del login:
+
+- Solo se aceptan correos **`@itsoeh.edu.mx`**.
+- Se envía un enlace de verificación (válido 24 h). La cuenta no existe hasta que se abre el enlace.
+- **Alumnos:** pueden entrar en cuanto verifican el correo.
+- **Docentes:** después de verificar, el administrador aprueba la cuenta en **Maestros y Personal → Aprobar**.
+- Si el administrador ya había dado de alta la matrícula (sin contraseña), el registro se vincula a ese mismo alumno en lugar de duplicarlo.
+- Se aceptan como máximo 5 solicitudes por hora desde la misma IP.
+
+**Configurar el envío de correos** (antes de iniciar el servidor; usa una contraseña de aplicación, nunca la escribas en el código):
+
+```powershell
+set NEOACCESS_SMTP_HOST=smtp.gmail.com
+set NEOACCESS_SMTP_PORT=587
+set NEOACCESS_SMTP_USER=neoaccess@itsoeh.edu.mx
+set NEOACCESS_SMTP_PASSWORD=contraseña-de-aplicacion
+set NEOACCESS_PUBLIC_URL=http://192.168.1.50:8000
+```
+
+- Google Workspace usa `smtp.gmail.com`; Microsoft 365 usa `smtp.office365.com`.
+- `NEOACCESS_PUBLIC_URL` es la dirección que aparecerá en el enlace del correo.
+- **Sin SMTP configurado (modo pruebas)**, el enlace se imprime en la consola del servidor en lugar de enviarse.
 
 ---
 

@@ -98,6 +98,29 @@ def init_db():
     columns = [col[1] for col in cursor.fetchall()]
     if "password_hash" not in columns:
         cursor.execute("ALTER TABLE usuarios ADD COLUMN password_hash TEXT;")
+    # Autoregistro: correo institucional verificado y aprobación de cuentas de docente
+    if "correo" not in columns:
+        cursor.execute("ALTER TABLE usuarios ADD COLUMN correo TEXT;")
+    if "cuenta_aprobada" not in columns:
+        cursor.execute("ALTER TABLE usuarios ADD COLUMN cuenta_aprobada INTEGER DEFAULT 1;")
+    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_correo ON usuarios (correo) WHERE correo IS NOT NULL;")
+
+    # Registros en espera de verificación por correo (@itsoeh.edu.mx).
+    # La cuenta se crea solo cuando el usuario abre el enlace; aquí se guarda el hash del token, nunca el token.
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS registros_pendientes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        token_hash TEXT UNIQUE NOT NULL,
+        correo TEXT NOT NULL,
+        matricula_clave TEXT NOT NULL,
+        nombre_completo TEXT NOT NULL,
+        tipo TEXT NOT NULL,
+        carrera TEXT,
+        password_hash TEXT NOT NULL,
+        expira TEXT NOT NULL,
+        fecha_solicitud TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
 
     # 6. Metadatos faciales (Sec. 2, 8, RF-07, RF-15)
     # IMPORTANTE: NO se guardan fotos, solo metadatos vectoriales (128 floats en JSON)

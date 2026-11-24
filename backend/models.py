@@ -10,6 +10,18 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
+class RegisterRequest(BaseModel):
+    """Autoregistro de alumnos y docentes con correo institucional @itsoeh.edu.mx."""
+    nombre_completo: str = Field(..., min_length=3, max_length=120)
+    matricula_clave: str = Field(..., min_length=3, max_length=40)
+    correo: str = Field(..., max_length=120)
+    tipo: Literal["alumno", "docente"] = "alumno"
+    carrera: Optional[str] = Field(None, max_length=120)
+    password: str = Field(..., min_length=8, max_length=128)
+
+class ResendVerificationRequest(BaseModel):
+    correo: str = Field(..., max_length=120)
+
 class LabCreate(BaseModel):
     id: str
     nombre: str

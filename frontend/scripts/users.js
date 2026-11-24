@@ -171,8 +171,18 @@ function renderDocentesTable(docentes) {
           <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${isActivo ? 'bg-slate-100 text-slate-800' : 'bg-red-50 text-red-700'}">
             ${isActivo ? 'Activo' : 'Baja'}
           </span>
+          ${d.cuenta_aprobada === 0 ? `
+            <span class="block mt-1 w-fit px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">Cuenta por aprobar</span>
+          ` : ''}
+          ${d.correo ? `<span class="block mt-1 text-[10px] text-slate-400">${esc(d.correo)}</span>` : ''}
         </td>
-        <td class="px-4 py-3 text-right space-x-1">
+        <td class="px-4 py-3 text-right space-x-1 whitespace-nowrap">
+          ${d.cuenta_aprobada === 0 ? `
+            <button onclick="approveAccount(${escJsArg(d.id)}, ${escJsArg(d.nombre_completo)})"
+              class="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold rounded transition" title="Aprobar cuenta de docente">
+              Aprobar
+            </button>
+          ` : ''}
           <button onclick="openFaceCaptureModal(${escJsArg(d.id)}, ${escJsArg(d.nombre_completo)})"
             class="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition" title="Registrar Rostro">
             <i data-lucide="scan-face" class="w-4 h-4"></i>
@@ -252,6 +262,18 @@ async function viewUserDetails(userId) {
     openModal("modal-user-details");
   } catch (err) {
     alert("Error al obtener detalle del usuario: " + err.message);
+  }
+}
+
+// Aprobar cuenta de docente autorregistrada (correo @itsoeh.edu.mx ya verificado)
+async function approveAccount(userId, nombre) {
+  if (!confirm(`¿Aprobar la cuenta de docente de ${nombre}?\n\nPodrá entrar al Portal Docente y ver el pase de lista de sus grupos.`)) return;
+  try {
+    const res = await apiFetch(`/api/users/${encodeURIComponent(userId)}/approve-account`, { method: "POST" });
+    alert(res.message);
+    loadTeachersData();
+  } catch (err) {
+    alert("No se pudo aprobar la cuenta: " + err.message);
   }
 }
 

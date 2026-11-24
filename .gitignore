@@ -30,3 +30,6 @@ raspberry_pi/models/
 tools/fotos_credenciales/*
 !tools/fotos_credenciales/.gitkeep
 tools/plantilla_alumnos.csv
+
+# Accesos de prueba locales (no publicar)
+ACCESOS_PRUEBA.txt

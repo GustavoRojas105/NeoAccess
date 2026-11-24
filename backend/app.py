@@ -25,13 +25,14 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from database.database import get_connection, init_db
+from backend.mailer import send_email
 from backend.auth import (
     hash_password, verify_password, needs_rehash, create_session,
     validate_session, destroy_session, generate_device_token,
     login_locked_seconds, register_failed_login, reset_failed_logins
 )
 from backend.models import (
-    LoginRequest, LabCreate, LabUpdate, DeviceCreate, GroupCreate,
+    LoginRequest, RegisterRequest, ResendVerificationRequest, LabCreate, LabUpdate, DeviceCreate, GroupCreate,
     UserCreate, FacialMetadataCreate, FacialCapturePayload, ScheduleCreate,
     HeartbeatPayload, AccessAttemptPayload, CleaningPayload, CommandAckPayload
 )
@@ -172,6 +173,12 @@ def login(payload: LoginRequest, request: Request):
     user = cursor.fetchone()
 
     if user and user["password_hash"] and verify_password(payload.password, user["password_hash"]):
+        if "cuenta_aprobada" in user.keys() and user["cuenta_aprobada"] == 0:
+            conn.close()
+            raise HTTPException(
+                status_code=403,
+                detail="Tu correo ya está verificado, pero la cuenta de docente espera la aprobación del administrador."
+            )
         if needs_rehash(user["password_hash"]):
             cursor.execute("UPDATE usuarios SET password_hash = ? WHERE id = ?",
                            (hash_password(payload.password), user["id"]))
@@ -219,6 +226,238 @@ def logout(authorization: Optional[str] = Header(None)):
 @app.get("/api/auth/me")
 def get_me(user: dict = Depends(get_current_user)):
     return {"success": True, "user": user}
+
+# -------------------------------------------------------------
+# AUTORREGISTRO CON CORREO INSTITUCIONAL (@itsoeh.edu.mx)
+# La cuenta solo se crea cuando el usuario abre el enlace enviado a su correo.
+# -------------------------------------------------------------
+import re
+import hashlib
+import html as _html
+import ipaddress
+import secrets
+import socket
+import time
+from fastapi.responses import RedirectResponse
+
+DOMINIO_INSTITUCIONAL = "itsoeh.edu.mx"
+_CORREO_RE = re.compile(r"^[a-z0-9._%+-]+@itsoeh\.edu\.mx$")
+_MATRICULA_RE = re.compile(r"^[A-Za-z0-9-]{3,40}$")
+VERIFICACION_HORAS = 24
+_REGISTRO_INTENTOS = {}  # ip -> [timestamps]
+_REGISTRO_MAX_POR_HORA = 5
+
+
+def _registro_rate_limit(ip: str):
+    ahora = time.time()
+    intentos = [t for t in _REGISTRO_INTENTOS.get(ip, []) if ahora - t < 3600]
+    if len(intentos) >= _REGISTRO_MAX_POR_HORA:
+        raise HTTPException(status_code=429, detail="Demasiadas solicitudes de registro. Intente de nuevo en una hora.")
+    intentos.append(ahora)
+    _REGISTRO_INTENTOS[ip] = intentos
+
+
+def _normalizar_correo(correo: str) -> str:
+    correo = (correo or "").strip().lower()
+    if not _CORREO_RE.match(correo):
+        raise HTTPException(status_code=400, detail=f"Solo se permiten correos institucionales @{DOMINIO_INSTITUCIONAL}.")
+    return correo
+
+
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _ahora_str() -> str:
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _public_base_url(request: Request) -> str:
+    """
+    URL base de los enlaces del correo. Usa NEOACCESS_PUBLIC_URL si existe; si no,
+    solo confía en el Host cuando es una IP de la red (un Host falso no puede hacer
+    que el enlace con el token apunte a otro sitio).
+    """
+    env_url = os.environ.get("NEOACCESS_PUBLIC_URL")
+    if env_url:
+        return env_url.rstrip("/")
+    port = request.url.port or 8000
+    host = request.url.hostname or ""
+    try:
+        if not ipaddress.ip_address(host).is_loopback:
+            return f"{request.url.scheme}://{host}:{port}"
+    except ValueError:
+        pass
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("10.255.255.255", 1))  # no envía paquetes; solo elige la interfaz
+        ip = s.getsockname()[0]
+        s.close()
+        return f"http://{ip}:{port}"
+    except Exception:
+        return f"http://127.0.0.1:{port}"
+
+
+def _enviar_verificacion(request: Request, correo: str, nombre: str, token: str) -> bool:
+    enlace = f"{_public_base_url(request)}/verificar?token={token}"
+    texto = (
+        f"Hola {nombre}:\n\n"
+        f"Para activar tu cuenta de NeoAccess ITSOEH abre este enlace (válido {VERIFICACION_HORAS} h):\n\n"
+        f"{enlace}\n\n"
+        "Si tú no solicitaste esta cuenta, ignora este correo."
+    )
+    html = (
+        f"<p>Hola {_html.escape(nombre)}:</p>"
+        f"<p>Para activar tu cuenta de <b>NeoAccess ITSOEH</b> haz clic aquí (válido {VERIFICACION_HORAS} h):</p>"
+        f'<p><a href="{enlace}" style="background:#0f172a;color:#fff;padding:10px 18px;'
+        f'border-radius:8px;text-decoration:none">Verificar mi correo</a></p>'
+        f"<p style='font-size:12px;color:#64748b'>O copia este enlace: {enlace}</p>"
+        "<p style='font-size:12px;color:#64748b'>Si tú no solicitaste esta cuenta, ignora este correo.</p>"
+    )
+    return send_email(correo, "Verifica tu cuenta de NeoAccess ITSOEH", texto, html)
+
+
+@app.post("/api/auth/register")
+def register_account(payload: RegisterRequest, request: Request):
+    """
+    Autorregistro de alumnos y docentes. Solo correos @itsoeh.edu.mx.
+    Envía un enlace de verificación; la cuenta no existe hasta que se abre.
+    Las cuentas de docente requieren además aprobación del administrador.
+    """
+    _registro_rate_limit(request.client.host if request.client else "desconocido")
+    correo = _normalizar_correo(payload.correo)
+    matricula = payload.matricula_clave.strip().upper()
+    if not _MATRICULA_RE.match(matricula):
+        raise HTTPException(status_code=400, detail="La matrícula o clave solo puede tener letras, números y guiones.")
+    nombre = " ".join(payload.nombre_completo.split())
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT id FROM usuarios WHERE correo = ?", (correo,))
+        if cursor.fetchone():
+            raise HTTPException(status_code=409, detail="Este correo ya tiene una cuenta. Inicie sesión.")
+        cursor.execute("SELECT password_hash, correo FROM usuarios WHERE matricula_clave = ?", (matricula,))
+        existente = cursor.fetchone()
+        if existente and (existente["password_hash"] or existente["correo"]):
+            raise HTTPException(status_code=409, detail="Esta matrícula o clave ya tiene una cuenta. Inicie sesión o contacte al administrador.")
+
+        # Una sola solicitud vigente por correo y por matrícula
+        cursor.execute("DELETE FROM registros_pendientes WHERE correo = ? OR matricula_clave = ? OR expira < ?",
+                       (correo, matricula, _ahora_str()))
+        token = secrets.token_urlsafe(32)
+        expira = (datetime.now() + timedelta(hours=VERIFICACION_HORAS)).strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute("""
+        INSERT INTO registros_pendientes (token_hash, correo, matricula_clave, nombre_completo, tipo, carrera, password_hash, expira)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+        """, (_hash_token(token), correo, matricula, nombre, payload.tipo,
+              (payload.carrera or "").strip() or None, hash_password(payload.password), expira))
+        conn.commit()
+
+        try:
+            enviado = _enviar_verificacion(request, correo, nombre, token)
+        except Exception as e:
+            cursor.execute("DELETE FROM registros_pendientes WHERE token_hash = ?", (_hash_token(token),))
+            conn.commit()
+            print(f"[CORREO] Error SMTP: {e}", flush=True)
+            raise HTTPException(status_code=502, detail="No se pudo enviar el correo de verificación. Intente más tarde.")
+    finally:
+        conn.close()
+
+    return {
+        "success": True,
+        "correo_enviado": enviado,
+        "message": (f"Te enviamos un enlace de verificación a {correo}. Ábrelo para activar tu cuenta."
+                    if enviado else
+                    "SMTP no configurado (modo pruebas): el enlace de verificación se mostró en la consola del servidor.")
+    }
+
+
+@app.post("/api/auth/resend-verification")
+def resend_verification(payload: ResendVerificationRequest, request: Request):
+    """Reenvía el enlace (genera uno nuevo). Respuesta genérica para no revelar qué correos existen."""
+    _registro_rate_limit(request.client.host if request.client else "desconocido")
+    correo = _normalizar_correo(payload.correo)
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM registros_pendientes WHERE correo = ? AND expira >= ?", (correo, _ahora_str()))
+    pend = cursor.fetchone()
+    if pend:
+        token = secrets.token_urlsafe(32)
+        expira = (datetime.now() + timedelta(hours=VERIFICACION_HORAS)).strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute("UPDATE registros_pendientes SET token_hash = ?, expira = ? WHERE id = ?",
+                       (_hash_token(token), expira, pend["id"]))
+        conn.commit()
+        try:
+            _enviar_verificacion(request, correo, pend["nombre_completo"], token)
+        except Exception as e:
+            print(f"[CORREO] Error SMTP: {e}", flush=True)
+    conn.close()
+    return {"success": True, "message": "Si hay un registro pendiente con ese correo, se envió un nuevo enlace."}
+
+
+@app.get("/verificar")
+def verify_email(token: str = ""):
+    """Enlace del correo: crea (o vincula) la cuenta y regresa al login con el resultado."""
+    if not token or len(token) > 200:
+        return RedirectResponse("/login?verificado=error", status_code=303)
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT * FROM registros_pendientes WHERE token_hash = ?", (_hash_token(token),))
+        pend = cursor.fetchone()
+        if not pend:
+            return RedirectResponse("/login?verificado=error", status_code=303)
+        if pend["expira"] < _ahora_str():
+            cursor.execute("DELETE FROM registros_pendientes WHERE id = ?", (pend["id"],))
+            conn.commit()
+            return RedirectResponse("/login?verificado=expirado", status_code=303)
+
+        cursor.execute("SELECT id FROM usuarios WHERE correo = ?", (pend["correo"],))
+        correo_usado = cursor.fetchone()
+        cursor.execute("SELECT * FROM usuarios WHERE matricula_clave = ?", (pend["matricula_clave"],))
+        existente = cursor.fetchone()
+        if correo_usado or (existente and (existente["password_hash"] or existente["correo"])):
+            cursor.execute("DELETE FROM registros_pendientes WHERE id = ?", (pend["id"],))
+            conn.commit()
+            return RedirectResponse("/login?verificado=existe", status_code=303)
+
+        if existente:
+            # Alumno/docente dado de alta antes por el administrador: se vincula su cuenta.
+            # Conserva su tipo; si no es alumno, requiere aprobación del administrador.
+            aprobada = 1 if existente["tipo"] == "alumno" else 0
+            cursor.execute("UPDATE usuarios SET password_hash = ?, correo = ?, cuenta_aprobada = ? WHERE id = ?;",
+                           (pend["password_hash"], pend["correo"], aprobada, existente["id"]))
+        else:
+            aprobada = 1 if pend["tipo"] == "alumno" else 0
+            nuevo_id = f"{'ALU' if pend['tipo'] == 'alumno' else 'DOC'}-{pend['matricula_clave']}"
+            cursor.execute("SELECT 1 FROM usuarios WHERE id = ?", (nuevo_id,))
+            if cursor.fetchone():
+                nuevo_id = f"{nuevo_id}-{secrets.token_hex(2).upper()}"
+            cursor.execute("""
+            INSERT INTO usuarios (id, nombre_completo, tipo, matricula_clave, password_hash, carrera, estado, correo, cuenta_aprobada)
+            VALUES (?, ?, ?, ?, ?, ?, 'activo', ?, ?);
+            """, (nuevo_id, pend["nombre_completo"], pend["tipo"], pend["matricula_clave"],
+                  pend["password_hash"], pend["carrera"], pend["correo"], aprobada))
+        cursor.execute("DELETE FROM registros_pendientes WHERE id = ?", (pend["id"],))
+        conn.commit()
+        return RedirectResponse("/login?verificado=" + ("ok" if aprobada else "pendiente"), status_code=303)
+    finally:
+        conn.close()
+
+
+@app.post("/api/users/{user_id}/approve-account")
+def approve_account(user_id: str, admin: dict = Depends(get_current_admin)):
+    """El administrador aprueba una cuenta de docente autorregistrada."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE usuarios SET cuenta_aprobada = 1 WHERE id = ?", (user_id,))
+    conn.commit()
+    ok = cursor.rowcount
+    conn.close()
+    if not ok:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+    return {"success": True, "message": "Cuenta aprobada. El docente ya puede iniciar sesión."}
 
 # -------------------------------------------------------------
 # PORTALES EXCLUSIVOS POR ROL (Docente, Alumno, Limpieza)
@@ -1190,6 +1429,8 @@ def get_users(
     cursor.execute(query, params)
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
+    for r in rows:
+        r.pop("password_hash", None)  # nunca exponer hashes de contraseña
     return rows
 
 @app.post("/api/users")
@@ -1265,8 +1506,10 @@ def get_user_details(user_id: str, admin: dict = Depends(get_current_admin)):
     history = [dict(r) for r in cursor.fetchall()]
 
     conn.close()
+    usuario = dict(user)
+    usuario.pop("password_hash", None)  # nunca exponer hashes de contraseña
     return {
-        "usuario": dict(user),
+        "usuario": usuario,
         "historial": history
     }
 
