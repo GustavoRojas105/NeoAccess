@@ -36,3 +36,6 @@ ACCESOS_PRUEBA.txt
 
 # Configuración local del servidor (contraseña SMTP)
 config_servidor.env
+
+# Simulador de prueba de acceso (datos locales)
+prueba_acceso/prueba_acceso.db
