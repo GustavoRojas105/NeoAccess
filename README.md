@@ -9,53 +9,79 @@
 
 ---
 
-## 📁 Nueva Estructura Modular del Proyecto
-
-El proyecto está organizado de manera limpia y modular por responsabilidades:
+## 📁 Estructura del Proyecto
 
 ```
 NeoAccess/
-├── database/                  # Base de datos relacional y scripts SQL
-│   ├── neoaccess.db           # Base de datos SQLite (10 tablas)
-│   ├── database.py            # Esquema y conexión PRAGMA
-│   └── seed_data.py           # Datos precargados del ITSOEH
+├── backend/                       # Servidor central y API REST / IoT (FastAPI)
+│   ├── app.py                     # Endpoints del Dashboard, IoT, registro facial y comandos remotos
+│   ├── auth.py                    # PBKDF2-SHA256 (600k iteraciones), sesiones y límite de intentos
+│   └── models.py                  # Modelos Pydantic de validación
 │
-├── backend/                   # Servidor central y API REST / IoT
-│   ├── app.py                 # Endpoints FastAPI y controlador de red
-│   ├── auth.py                # Autenticación PBKDF2-SHA256 (600k iteraciones) + límite de intentos
-│   └── models.py              # Modelos Pydantic de validación
+├── database/                      # Base de datos SQLite
+│   ├── database.py                # Esquema (11 tablas) y conexión
+│   ├── seed_data.py               # Datos de prueba del ITSOEH (crea neoaccess.db)
+│   ├── update_passwords.py        # Asigna contraseñas de prueba por rol
+│   └── neoaccess.db               # (se genera solo; no está en Git)
 │
-├── frontend/                  # Interfaz gráfica de usuario (SPA)
-│   ├── html/
-│   │   └── index.html         # Dashboard principal con diseño neutral
-│   ├── styles/
-│   │   └── style.css          # Estilos sobrios y reservas verde/amarillo/rojo
-│   └── scripts/
-│       ├── app.js             # Enrutador y control de sesión
-│       ├── laboratories.js    # NUEVO: Gestión y alta de laboratorios reales
-│       ├── devices.js         # Monitor de Raspberry Pi Zero W y puertas
-│       ├── metrics.js         # KPIs y gráficos interactivos Chart.js
-│       ├── schedules.js       # Asignación de horarios semanales
-│       ├── users.js           # Alumnos, docentes y captura facial (128-d)
-│       └── reports.js         # Reportes y descarga en formato CSV
+├── frontend/                      # Dashboard web (SPA)
+│   ├── html/                      # index.html (Dashboard) y login.html
+│   ├── styles/style.css
+│   └── scripts/                   # app.js, laboratories.js, devices.js, metrics.js,
+│                                  # schedules.js, users.js (captura facial), reports.js
 │
-├── raspberry_pi/              # PAQUETE COMPLETO PARA TU RASPBERRY PI ZERO W
-│   ├── rpi_main.py            # Software de control de puerta (Cámara + Relé GPIO 17)
-│   ├── test_conexion.py       # Diagnóstico en vivo de red y prueba de relevador
-│   ├── config.json            # Configuración de IP, Token y Pines GPIO
-│   ├── config.json.template   # Plantilla de configuración
-│   ├── setup_rpi.sh           # Instalador automático en Raspberry Pi OS
-│   ├── requirements.txt       # Librerías necesarias (RPi.GPIO, requests, etc.)
-│   └── LEEME_RASPBERRY.md     # Guía detallada de conexión para la Raspberry Pi
+├── raspberry_pi/                  # Paquete para la Raspberry Pi Zero W de cada puerta
+│   ├── rpi_main.py                # Nodo de puerta: cámara + reconocimiento + relé GPIO 17
+│   ├── face_engine.py             # Motor facial YuNet + SFace (compartido con el servidor)
+│   ├── descargar_modelos.py       # Descarga los modelos ONNX a models/
+│   ├── simulator.py               # Simulador interactivo de la puerta en PC
+│   ├── test_conexion.py           # Diagnóstico de red, token y relevador
+│   ├── setup_rpi.sh               # Instalador automático en Raspberry Pi OS
+│   ├── config.json.template       # Plantilla de configuración (copiar a config.json)
+│   ├── requirements.txt
+│   ├── LEEME_RASPBERRY.md         # Guía de conexión de la Raspberry Pi
+│   └── models/                    # (se descargan solos; no están en Git)
 │
-├── docs/                      # Documentación del sistema
-│   ├── CONECTAR_RPI_ZERO.md   # Diagrama de pines y protocolo de red
-│   ├── GUIA_INSTALACION.md    # Manual paso a paso
-│   └── ARQUITECTURA.md        # Arquitectura de hardware, datos y privacidad
+├── tools/                         # Registro masivo de rostros desde fotos + CSV
+│   ├── entrenar_pkl_lote.py
+│   ├── plantilla_alumnos.ejemplo.csv   # Copiar a plantilla_alumnos.csv
+│   ├── fotos_credenciales/        # Fotos de entrada (no se suben a Git)
+│   └── README_PKL.md
 │
-├── run_server.bat             # Inicia el Servidor Central y abre el Dashboard
-├── run_simulator.bat          # Simulador interactivo para pruebas en PC
-└── README.md                  # Este documento
+├── docs/                          # ARQUITECTURA.md, GUIA_INSTALACION.md, CONECTAR_RPI_ZERO.md
+├── requirements.txt               # Dependencias del servidor
+├── run_server.bat                 # Instala dependencias, prepara la BD y abre el Dashboard
+└── run_simulator.bat              # Abre el simulador de puerta
+```
+
+---
+
+## ⬇️ Clonar e Instalar desde GitHub
+
+**Requisitos:** Windows 10/11 con [Python 3.10+](https://www.python.org/downloads/) y [Git](https://git-scm.com/).
+
+```powershell
+git clone https://github.com/GustavoRojas105/NeoAcces.git
+cd NeoAcces
+.\run_server.bat
+```
+
+La primera vez, `run_server.bat` hace todo automáticamente:
+
+1. Instala las dependencias de `requirements.txt` (FastAPI, Uvicorn, OpenCV, NumPy…).
+2. Descarga los modelos de reconocimiento facial (~37 MB) en `raspberry_pi/models/`.
+3. Crea la base de datos `database/neoaccess.db` con datos de prueba.
+4. Abre el Dashboard en `http://localhost:8000/login`.
+
+> **No se incluyen en el repositorio** (por privacidad y seguridad): la base de datos, los vectores faciales (`*.pkl`, `cache_offline.json`), el `config.json` con el token de cada puerta, los modelos ONNX ni las listas o fotos reales de alumnos. Todo se genera localmente.
+
+Instalación manual (equivalente):
+
+```powershell
+python -m pip install -r requirements.txt
+python raspberry_pi\descargar_modelos.py
+python database\seed_data.py
+python backend\app.py
 ```
 
 ---
@@ -63,16 +89,17 @@ NeoAccess/
 ## 🚀 Inicio Rápido (Servidor Central)
 
 1. En tu computadora, haz doble clic en **`run_server.bat`**.
-2. Abrirá automáticamente el Dashboard en tu navegador: `http://localhost:8000`.
-3. Inicia sesión con:
-   - **Usuario:** `admin`
-   - **Contraseña:** `admin123`
+2. Abrirá automáticamente el Dashboard en tu navegador: `http://localhost:8000/login`.
+3. Inicia sesión con las credenciales de prueba:
+   - **Administrador:** `admin` / `admin123`
+   - **Docentes, alumnos y limpieza:** su matrícula o clave con `docente123`, `alumno123` o `limpieza123` (tras ejecutar `python database\update_passwords.py`).
+4. **Cambia estas contraseñas** antes de usar datos reales.
 
 ---
 
 ## 🏫 Cómo Agregar un Nuevo Laboratorio Real
 
-1. En el Dashboard, dirígete a la nueva sección **"Laboratorios y Salones"** en el menú izquierdo.
+1. En el Dashboard, dirígete a la sección **"Laboratorios y Salones"** en el menú izquierdo.
 2. Haz clic en el botón superior **"+ Agregar Laboratorio"**.
 3. Ingresa los datos:
    - **Clave / ID:** Ejemplo: `LAB-STEM-04` o `LAB-ED6-03`.
@@ -86,43 +113,49 @@ NeoAccess/
 
 ## 🔌 Cómo Poner a Funcionar tu Raspberry Pi Zero W Real
 
-1. Copia toda la carpeta **`raspberry_pi/`** a tu Raspberry Pi Zero W.
-2. Consulta la guía completa en [`raspberry_pi/LEEME_RASPBERRY.md`](file:///C:/Users/gr321/Desktop/NeoAccess/raspberry_pi/LEEME_RASPBERRY.md).
-3. Conecta el relevador de la cerradura electromagnética al **Pin GPIO 17** y los indicadores a los pines correspondientes.
-4. Ejecuta el diagnóstico de conexión en la Raspberry Pi:
+1. En el Dashboard, sección **Dispositivos**, da de alta la puerta y descarga su **`config.json`** (ya trae el token y la IP de tu PC).
+2. Copia la carpeta **`raspberry_pi/`** a la Raspberry Pi y coloca ahí el `config.json` descargado.
+3. Ejecuta el instalador (instala OpenCV, la cámara y los modelos, y crea el servicio de arranque automático):
+   ```bash
+   cd raspberry_pi
+   bash setup_rpi.sh
+   ```
+4. Conecta el relevador de la cerradura al **GPIO 17**, el LED verde al **GPIO 27**, el rojo al **GPIO 22** y el buzzer al **GPIO 23**. Detalles en [`raspberry_pi/LEEME_RASPBERRY.md`](raspberry_pi/LEEME_RASPBERRY.md) y [`docs/CONECTAR_RPI_ZERO.md`](docs/CONECTAR_RPI_ZERO.md).
+5. Comprueba la conexión (escucharás el "clic" del relevador):
    ```bash
    python3 test_conexion.py
    ```
-   Verás las 4 pruebas automáticas y escucharás el "clic" mecánico del relevador.
-5. Inicia el sistema con:
+6. Inicia el servicio:
    ```bash
-   python3 rpi_main.py
+   sudo systemctl start neoaccess-door
    ```
 
 ---
 
-## 🔐 Seguridad (actualización)
+## 🔐 Seguridad
 
 - **Contraseñas:** PBKDF2-HMAC-SHA256 con 600 000 iteraciones. Los hashes antiguos (SHA-256 simple) se migran automáticamente la próxima vez que cada usuario inicia sesión.
 - **Fuerza bruta:** después de 5 intentos fallidos con el mismo usuario (o 20 desde la misma IP) en 15 minutos, el login se bloquea 15 minutos (HTTP 429).
-- **Dispositivos IoT:** cada Raspberry Pi solo puede reportar eventos con su propio `dispositivo_id`; el token viaja en el header `X-Device-Token` al sincronizar reglas.
+- **Dispositivos IoT:** cada Raspberry Pi solo puede reportar eventos con su propio `dispositivo_id`; el token viaja en el header `X-Device-Token`.
+- **Portales por rol:** cada portal (alumno, docente, limpieza) solo responde a su rol; la API de administración exige rol de administrador.
 - **CORS:** deshabilitado por defecto (el Dashboard se sirve desde el mismo servidor). Para permitir otro origen: `set NEOACCESS_CORS_ORIGINS=http://host:puerto`.
 - **Modo desarrollo:** la recarga automática del servidor solo se activa con `set NEOACCESS_DEV=1`.
-- **Cambia las contraseñas por defecto** (`admin123`, `docente123`, etc.) antes de usar el sistema con datos reales.
+- **Tokens de ejemplo:** los dispositivos de `seed_data.py` usan tokens públicos de demostración; para puertas reales, dalas de alta desde el Dashboard (genera tokens aleatorios).
 
 ---
 
-## 🧠 Reconocimiento facial real (YuNet + SFace)
+## 🧠 Reconocimiento Facial Real (YuNet + SFace)
 
 El servidor y las puertas usan **el mismo motor** ([`raspberry_pi/face_engine.py`](raspberry_pi/face_engine.py)) basado en modelos ONNX de OpenCV, así los vectores registrados y los capturados en la puerta son comparables:
 
 - **YuNet** detecta el rostro; **SFace** genera el vector de 128 dimensiones; se comparan por **similitud coseno** (umbral `umbral_similitud_coseno`, 0.363 por defecto; súbelo, p. ej. a 0.45, si hay falsos positivos).
 - **Modelos:** `python raspberry_pi/descargar_modelos.py` (≈37 MB, una sola vez en la PC y en cada Pi). `run_server.bat` y `setup_rpi.sh` lo hacen automáticamente.
 - **Registro (Dashboard → Usuarios → cámara):** el navegador toma 3 fotogramas, el servidor extrae el vector y **descarta las imágenes** (RF-07). La cámara del navegador solo funciona en `http://localhost` o con HTTPS.
-- **Importante:** los vectores de prueba de `seed_data.py` y los capturados antes de esta versión eran aleatorios; hay que **volver a registrar el rostro** de cada persona para que la puerta la reconozca.
+- **Importante:** los vectores de prueba de `seed_data.py` son aleatorios; hay que **registrar el rostro** de cada persona para que la puerta la reconozca.
 
 ### Puerta (Raspberry Pi)
-- `rpi_main.py` ahora corre 3 tareas: reconocimiento continuo con la cámara (Picamera2 o USB), latido/sincronización y **consulta de órdenes remotas cada 3 s**.
+- `rpi_main.py` corre 3 tareas: reconocimiento continuo con la cámara (Picamera2 o USB), latido/sincronización y **consulta de órdenes remotas cada 3 s**.
 - **Apertura remota:** el botón de llave del Dashboard encola una orden; la Pi la ejecuta y la confirma; el Dashboard muestra si la puerta realmente abrió (o si no respondió en 30 s).
 - **Limpieza (RF-04):** cada reconocimiento del personal de limpieza alterna *entrada/salida* en la bitácora (con cola offline si no hay red).
+- **Modo offline (RF-08/09):** sin red, la puerta sigue decidiendo con su caché local y sincroniza los registros al reconectarse.
 - Pi Zero W: espere ~1–2 s por reconocimiento; use buena iluminación frontal.

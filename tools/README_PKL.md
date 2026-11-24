@@ -44,7 +44,7 @@ Tienes 3 fuentes principales y muy sencillas en una escuela como el ITSOEH:
 
 ## 3. ¿Cómo registrar usuarios por bloques o tandas en el `.pkl`?
 
-Creamos una herramienta automática lista para usar: [`tools/entrenar_pkl_lote.py`](file:///C:/Users/gr321/Desktop/NeoAccess/tools/entrenar_pkl_lote.py).
+Creamos una herramienta automática lista para usar: [`tools/entrenar_pkl_lote.py`](entrenar_pkl_lote.py).
 
 ### Pasos para procesar un grupo o generación completa:
 
@@ -56,7 +56,7 @@ Copia las fotos de los alumnos dentro de la carpeta:
 
 #### Paso 2: Llenar la plantilla CSV
 Abre con Excel o bloc de notas el archivo:
-📄 [`tools/plantilla_alumnos.csv`](file:///C:/Users/gr321/Desktop/NeoAccess/tools/plantilla_alumnos.csv)
+📄 [`tools/plantilla_alumnos.ejemplo.csv`](plantilla_alumnos.ejemplo.csv) (cópiala como `plantilla_alumnos.csv`)
 
 Pega la lista del grupo con estas columnas:
 ```csv
