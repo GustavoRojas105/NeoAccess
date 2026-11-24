@@ -32,7 +32,7 @@ from backend.auth import (
     login_locked_seconds, register_failed_login, reset_failed_logins
 )
 from backend.models import (
-    LoginRequest, RegisterRequest, ResendVerificationRequest, LabCreate, LabUpdate, DeviceCreate, GroupCreate,
+    LoginRequest, RegisterRequest, ResendVerificationRequest, MaintenancePayload, LabCreate, LabUpdate, DeviceCreate, GroupCreate,
     UserCreate, FacialMetadataCreate, FacialCapturePayload, ScheduleCreate,
     HeartbeatPayload, AccessAttemptPayload, CleaningPayload, CommandAckPayload
 )
@@ -78,6 +78,29 @@ SCRIPTS_DIR = os.path.join(FRONTEND_DIR, "scripts")
 # -------------------------------------------------------------
 # DEPENDENCIAS Y AUTENTICACIÓN
 # -------------------------------------------------------------
+# -------------------------------------------------------------
+# MODO MANTENIMIENTO GLOBAL
+# Mientras está activo solo el administrador puede usar la plataforma web.
+# Las puertas (API IoT con token de dispositivo) siguen funcionando.
+# -------------------------------------------------------------
+MANTENIMIENTO_MENSAJE_DEFECTO = "El sistema está en mantenimiento. Intente más tarde."
+
+def get_maintenance_state() -> dict:
+    conn = get_connection()
+    rows = {r["clave"]: r["valor"] for r in conn.execute(
+        "SELECT clave, valor FROM configuracion_sistema WHERE clave LIKE 'mantenimiento%'").fetchall()}
+    conn.close()
+    return {
+        "activo": rows.get("mantenimiento") == "1",
+        "mensaje": rows.get("mantenimiento_mensaje") or MANTENIMIENTO_MENSAJE_DEFECTO,
+        "desde": rows.get("mantenimiento_desde"),
+        "por": rows.get("mantenimiento_por"),
+    }
+
+def maintenance_exception(state: dict) -> HTTPException:
+    return HTTPException(status_code=503, detail=state["mensaje"],
+                         headers={"X-NeoAccess-Mantenimiento": "1", "Retry-After": "600"})
+
 def get_current_user(authorization: Optional[str] = Header(None)):
     """Verifica que la petición provenga de un usuario autenticado (cualquier rol)."""
     if not authorization:
@@ -86,6 +109,10 @@ def get_current_user(authorization: Optional[str] = Header(None)):
     session = validate_session(token)
     if not session:
         raise HTTPException(status_code=401, detail="Sesión expirada o token inválido.")
+    if session.get("rol") != "administrador":
+        state = get_maintenance_state()
+        if state["activo"]:
+            raise maintenance_exception(state)
     return session
 
 def require_role(*roles: str):
@@ -173,6 +200,10 @@ def login(payload: LoginRequest, request: Request):
     user = cursor.fetchone()
 
     if user and user["password_hash"] and verify_password(payload.password, user["password_hash"]):
+        state = get_maintenance_state()
+        if state["activo"]:
+            conn.close()
+            raise maintenance_exception(state)
         if "cuenta_aprobada" in user.keys() and user["cuenta_aprobada"] == 0:
             conn.close()
             raise HTTPException(
@@ -226,6 +257,39 @@ def logout(authorization: Optional[str] = Header(None)):
 @app.get("/api/auth/me")
 def get_me(user: dict = Depends(get_current_user)):
     return {"success": True, "user": user}
+
+@app.get("/api/system/status")
+def system_status():
+    """Público: lo consulta la página de login para mostrar el aviso de mantenimiento."""
+    state = get_maintenance_state()
+    return {"mantenimiento": state["activo"], "mensaje": state["mensaje"] if state["activo"] else None}
+
+@app.get("/api/system/maintenance")
+def get_maintenance(admin: dict = Depends(get_current_admin)):
+    return get_maintenance_state()
+
+@app.post("/api/system/maintenance")
+def set_maintenance(payload: MaintenancePayload, admin: dict = Depends(get_current_admin)):
+    """Activa o desactiva el modo mantenimiento global (solo administrador)."""
+    mensaje = " ".join((payload.mensaje or "").split()) or MANTENIMIENTO_MENSAJE_DEFECTO
+    ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    valores = {
+        "mantenimiento": "1" if payload.activo else "0",
+        "mantenimiento_mensaje": mensaje,
+        "mantenimiento_desde": ahora if payload.activo else None,
+        "mantenimiento_por": admin.get("nombre") if payload.activo else None,
+    }
+    conn = get_connection()
+    for clave, valor in valores.items():
+        conn.execute("""
+        INSERT INTO configuracion_sistema (clave, valor, actualizado) VALUES (?, ?, ?)
+        ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor, actualizado = excluded.actualizado;
+        """, (clave, valor, ahora))
+    conn.commit()
+    conn.close()
+    estado = "ACTIVADO" if payload.activo else "desactivado"
+    print(f"[MANTENIMIENTO] {estado} por {admin.get('nombre')} ({ahora})", flush=True)
+    return {"success": True, **get_maintenance_state()}
 
 # -------------------------------------------------------------
 # AUTORREGISTRO CON CORREO INSTITUCIONAL (@itsoeh.edu.mx)
@@ -324,6 +388,9 @@ def register_account(payload: RegisterRequest, request: Request):
     Envía un enlace de verificación; la cuenta no existe hasta que se abre.
     Las cuentas de docente requieren además aprobación del administrador.
     """
+    state = get_maintenance_state()
+    if state["activo"]:
+        raise maintenance_exception(state)
     _registro_rate_limit(request.client.host if request.client else "desconocido")
     correo = _normalizar_correo(payload.correo)
     matricula = payload.matricula_clave.strip().upper()
@@ -376,6 +443,9 @@ def register_account(payload: RegisterRequest, request: Request):
 @app.post("/api/auth/resend-verification")
 def resend_verification(payload: ResendVerificationRequest, request: Request):
     """Reenvía el enlace (genera uno nuevo). Respuesta genérica para no revelar qué correos existen."""
+    state = get_maintenance_state()
+    if state["activo"]:
+        raise maintenance_exception(state)
     _registro_rate_limit(request.client.host if request.client else "desconocido")
     correo = _normalizar_correo(payload.correo)
     conn = get_connection()

@@ -22,6 +22,10 @@ class RegisterRequest(BaseModel):
 class ResendVerificationRequest(BaseModel):
     correo: str = Field(..., max_length=120)
 
+class MaintenancePayload(BaseModel):
+    activo: bool
+    mensaje: Optional[str] = Field(None, max_length=300)
+
 class LabCreate(BaseModel):
     id: str
     nombre: str

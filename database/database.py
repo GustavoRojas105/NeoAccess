@@ -105,6 +105,15 @@ def init_db():
         cursor.execute("ALTER TABLE usuarios ADD COLUMN cuenta_aprobada INTEGER DEFAULT 1;")
     cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_correo ON usuarios (correo) WHERE correo IS NOT NULL;")
 
+    # Configuración global del sistema (p. ej. modo mantenimiento)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS configuracion_sistema (
+        clave TEXT PRIMARY KEY,
+        valor TEXT,
+        actualizado TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
     # Registros en espera de verificación por correo (@itsoeh.edu.mx).
     # La cuenta se crea solo cuando el usuario abre el enlace; aquí se guarda el hash del token, nunca el token.
     cursor.execute("""

@@ -20,7 +20,7 @@ NeoAccess/
 │   └── models.py                  # Modelos Pydantic de validación
 │
 ├── database/                      # Base de datos SQLite
-│   ├── database.py                # Esquema (12 tablas) y conexión
+│   ├── database.py                # Esquema (13 tablas) y conexión
 │   ├── seed_data.py               # Datos de prueba del ITSOEH (crea neoaccess.db)
 │   ├── update_passwords.py        # Asigna contraseñas de prueba por rol
 │   └── neoaccess.db               # (se genera solo; no está en Git)
@@ -121,6 +121,18 @@ Alumnos y docentes crean su cuenta en la pestaña **Crear cuenta** del login:
 5. Reinicia `run_server.bat`. Al arrancar indica si está usando `config_servidor.env`.
 
 - **Sin SMTP configurado (modo pruebas)**, el enlace se imprime en la consola del servidor en lugar de enviarse.
+
+---
+
+## 🔧 Modo Mantenimiento
+
+Desde el Dashboard → menú lateral → **Modo mantenimiento** (el indicador muestra ON/OFF):
+
+- Solo los **administradores** pueden iniciar sesión y usar el Dashboard.
+- Alumnos, docentes y personal de limpieza ven el aviso con tu mensaje: en el login y, si ya tenían sesión abierta, en una pantalla de mantenimiento. Sus sesiones solo quedan en pausa y vuelven a funcionar al desactivarlo.
+- El registro de cuentas nuevas se pausa.
+- Las **puertas siguen funcionando**: reconocimiento, sincronización y apertura remota.
+- Mientras está activo, el Dashboard muestra una barra naranja con un botón para desactivarlo.
 
 ---
 

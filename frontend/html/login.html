@@ -51,6 +51,13 @@
       <button type="button" id="tab-register" class="py-2 rounded-lg text-slate-500">Crear cuenta</button>
     </div>
 
+    <!-- Aviso de mantenimiento global -->
+    <div id="maintenance-notice" class="hidden mb-4 p-3 text-xs rounded-lg bg-amber-50 text-amber-900 border border-amber-300">
+      <p class="font-bold mb-0.5">🔧 Sistema en mantenimiento</p>
+      <p id="maintenance-notice-text"></p>
+      <p class="mt-1 text-[10px] text-amber-700">Solo los administradores pueden iniciar sesión. Las puertas siguen funcionando.</p>
+    </div>
+
     <!-- Mensaje informativo (verificación de correo, registro enviado) -->
     <div id="login-info" class="hidden mb-4 p-3 text-xs rounded-lg border font-medium"></div>
 
@@ -185,7 +192,23 @@
         tabLogin.className = "py-2 rounded-lg " + (!reg ? "bg-white text-slate-900 shadow-sm" : "text-slate-500");
       }
       tabLogin.addEventListener("click", () => showTab("login"));
-      tabRegister.addEventListener("click", () => showTab("register"));
+      let enMantenimiento = false;
+      tabRegister.addEventListener("click", () => {
+        if (enMantenimiento) {
+          showInfo("El registro de cuentas está pausado mientras el sistema está en mantenimiento.", "warn");
+          return;
+        }
+        showTab("register");
+      });
+
+      // Modo mantenimiento: avisar antes de que el usuario intente entrar
+      fetch("/api/system/status").then(r => r.json()).then(st => {
+        if (!st.mantenimiento) return;
+        enMantenimiento = true;
+        document.getElementById("maintenance-notice-text").textContent = st.mensaje;
+        document.getElementById("maintenance-notice").classList.remove("hidden");
+        tabRegister.classList.add("opacity-50", "cursor-not-allowed");
+      }).catch(() => {});
 
       document.getElementById("reg-tipo").addEventListener("change", (e) => {
         document.getElementById("reg-matricula-label").textContent =

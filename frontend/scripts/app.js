@@ -48,6 +48,11 @@ async function apiFetch(endpoint, options = {}) {
     logoutUser();
     throw new Error("Sesión no autorizada o expirada");
   }
+  if (res.status === 503 && res.headers.get("X-NeoAccess-Mantenimiento")) {
+    const data = await res.json().catch(() => ({}));
+    showMaintenanceScreen(data.detail);
+    throw new Error(data.detail || "Sistema en mantenimiento");
+  }
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(errorData.detail || "Error en la petición al servidor");
@@ -310,6 +315,11 @@ function setupNavigation() {
     });
   });
 
+  // Modo mantenimiento
+  document.getElementById("btn-open-maintenance")?.addEventListener("click", openMaintenanceModal);
+  document.getElementById("btn-maintenance-toggle")?.addEventListener("click", () => setMaintenance(!STATE.mantenimiento.activo));
+  document.getElementById("btn-maintenance-off-banner")?.addEventListener("click", () => setMaintenance(false));
+
   // Menú deslizable en la versión móvil
   document.getElementById("btn-mobile-menu")?.addEventListener("click", () => {
     document.body.classList.toggle("sidebar-open");
@@ -373,7 +383,81 @@ function refreshActiveSection() {
   else if (STATE.currentSection === "reports") loadReportsDropdowns();
 }
 
+// -------------------------------------------------------------
+// MODO MANTENIMIENTO GLOBAL
+// -------------------------------------------------------------
+STATE.mantenimiento = { activo: false, mensaje: "" };
+
+function showMaintenanceScreen(mensaje) {
+  const screen = document.getElementById("maintenance-screen");
+  if (!screen) return;
+  document.getElementById("maintenance-screen-text").textContent =
+    mensaje || "El sistema está en mantenimiento. Intente más tarde.";
+  screen.classList.remove("hidden");
+  if (window.lucide) lucide.createIcons();
+}
+
+function renderMaintenanceState() {
+  const m = STATE.mantenimiento;
+  const chip = document.getElementById("maintenance-chip");
+  if (chip) {
+    chip.textContent = m.activo ? "ON" : "OFF";
+    chip.className = "text-[10px] font-bold px-1.5 py-0.5 rounded " +
+      (m.activo ? "bg-amber-500 text-white" : "bg-slate-800 text-slate-400");
+  }
+  const banner = document.getElementById("maintenance-banner");
+  if (banner) {
+    banner.classList.toggle("hidden", !m.activo);
+    banner.classList.toggle("flex", m.activo);
+    const desde = m.desde ? ` (desde ${m.desde}${m.por ? ", " + m.por : ""})` : "";
+    document.getElementById("maintenance-banner-text").textContent =
+      `Solo los administradores pueden entrar${desde}. Mensaje: "${m.mensaje}"`;
+  }
+  const stateEl = document.getElementById("maintenance-modal-state");
+  if (stateEl) {
+    stateEl.textContent = m.activo ? "Estado: ACTIVADO" : "Estado: desactivado";
+    stateEl.className = "text-xs " + (m.activo ? "text-amber-700 font-bold" : "text-slate-500");
+  }
+  const btn = document.getElementById("btn-maintenance-toggle");
+  if (btn) {
+    btn.textContent = m.activo ? "Desactivar mantenimiento" : "Activar mantenimiento";
+    btn.className = "px-4 py-1.5 text-white text-xs font-semibold rounded-lg " +
+      (m.activo ? "bg-emerald-600 hover:bg-emerald-700" : "bg-amber-600 hover:bg-amber-700");
+  }
+}
+
+async function loadMaintenanceState() {
+  try {
+    STATE.mantenimiento = await apiFetch("/api/system/maintenance");
+    renderMaintenanceState();
+  } catch (err) {
+    console.error("Error al consultar modo mantenimiento:", err);
+  }
+}
+
+function openMaintenanceModal() {
+  document.getElementById("maintenance-message").value = STATE.mantenimiento.mensaje || "";
+  renderMaintenanceState();
+  openModal("modal-maintenance");
+}
+
+async function setMaintenance(activo) {
+  const mensaje = document.getElementById("maintenance-message")?.value.trim() || STATE.mantenimiento.mensaje;
+  const pregunta = activo
+    ? "¿Activar el modo mantenimiento?\n\nAlumnos, docentes y limpieza no podrán usar la plataforma hasta que lo desactives. Las puertas siguen funcionando."
+    : "¿Desactivar el modo mantenimiento? Todos los usuarios podrán volver a entrar.";
+  if (!confirm(pregunta)) return;
+  try {
+    STATE.mantenimiento = await apiFetch("/api/system/maintenance", { method: "POST", body: { activo, mensaje } });
+    renderMaintenanceState();
+    closeModal("modal-maintenance");
+  } catch (err) {
+    alert("No se pudo cambiar el modo mantenimiento: " + err.message);
+  }
+}
+
 async function loadInitialData() {
+  loadMaintenanceState();
   try {
     const labs = await apiFetch("/api/labs");
     STATE.laboratorios = labs;
