@@ -150,3 +150,56 @@ body {
     overflow-x: auto;
   }
 }
+
+/* ── Diálogos propios (reemplazan alert/confirm del navegador) ── */
+.na-dialog-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+  padding: 1rem;
+  background-color: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(2px);
+  animation: naFade 0.12s ease-out;
+}
+.na-dialog-overlay.na-dialog-closing { animation: naFadeOut 0.12s ease-in forwards; }
+.na-dialog {
+  width: 100%; max-width: 26rem;
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 0.75rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  animation: naPop 0.14s ease-out;
+  overflow: hidden;
+}
+.na-dialog-body { display: flex; gap: 0.875rem; padding: 1.25rem 1.25rem 1rem; }
+.na-dialog-icon {
+  flex-shrink: 0; width: 2.5rem; height: 2.5rem; border-radius: 9999px;
+  display: flex; align-items: center; justify-content: center;
+}
+.na-dialog-text { min-width: 0; }
+.na-dialog-text h3 { margin: 0 0 0.25rem; font-size: 0.9rem; font-weight: 700; color: #0f172a; }
+.na-dialog-text p {
+  margin: 0; font-size: 0.8rem; line-height: 1.45; color: #475569;
+  white-space: pre-line; overflow-wrap: anywhere;
+}
+.na-dialog-actions {
+  display: flex; justify-content: flex-end; gap: 0.5rem;
+  padding: 0.75rem 1.25rem; background: #f8fafc; border-top: 1px solid #e2e8f0;
+}
+.na-btn {
+  min-height: 2.5rem; padding: 0.5rem 1rem; border-radius: 0.5rem;
+  font-size: 0.8rem; font-weight: 600; cursor: pointer; border: 1px solid transparent;
+  transition: background-color 0.15s;
+}
+.na-btn:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }
+.na-btn-primary { background: #0f172a; color: #fff; }
+.na-btn-primary:hover { background: #1e293b; }
+.na-btn-danger { background: #dc2626; color: #fff; }
+.na-btn-danger:hover { background: #b91c1c; }
+.na-btn-secondary { background: #fff; color: #334155; border-color: #cbd5e1; }
+.na-btn-secondary:hover { background: #f1f5f9; }
+@media (max-width: 480px) {
+  .na-dialog-overlay { align-items: flex-end; padding: 0.75rem; }
+  .na-dialog-actions { flex-direction: column-reverse; }
+  .na-btn { width: 100%; min-height: 2.75rem; }
+}
+@keyframes naFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes naFadeOut { to { opacity: 0; } }
+@keyframes naPop { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }

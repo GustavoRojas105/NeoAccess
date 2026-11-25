@@ -35,7 +35,7 @@ async function generateReport() {
     const data = await apiFetch(`/api/reports/data?${params.toString()}`);
     renderReportResults(data);
   } catch (err) {
-    alert("Error al generar reporte: " + err.message);
+    showAlert("Error al generar reporte: " + err.message);
   }
 }
 
@@ -97,7 +97,7 @@ function downloadReportCSV() {
     a.click();
     a.remove();
   })
-  .catch(err => alert("Error al descargar archivo CSV: " + err.message));
+  .catch(err => showAlert("Error al descargar archivo CSV: " + err.message));
 }
 
 document.addEventListener("DOMContentLoaded", () => {

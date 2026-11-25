@@ -61,7 +61,7 @@ function renderLaboratoriesTable(labs) {
 
 async function toggleLabStatus(labId, newStatus) {
   const actionText = newStatus === 0 ? "desactivar" : "activar";
-  if (!confirm(`¿Está seguro de ${actionText} este laboratorio?`)) return;
+  if (!(await showConfirm(`¿Está seguro de ${actionText} este laboratorio?`, { confirmText: newStatus === 0 ? "Desactivar" : "Activar", danger: newStatus === 0 }))) return;
 
   try {
     if (newStatus === 0) {
@@ -86,7 +86,7 @@ async function toggleLabStatus(labId, newStatus) {
     await loadLaboratoriesData();
     updateGlobalDeviceStatus();
   } catch (err) {
-    alert("Error al cambiar estado del laboratorio: " + err.message);
+    showAlert("Error al cambiar estado del laboratorio: " + err.message);
   }
 }
 
@@ -119,14 +119,14 @@ document.addEventListener("DOMContentLoaded", () => {
           body: payload
         });
 
-        alert(`✓ ¡Laboratorio '${payload.nombre}' creado con éxito!`);
+        showAlert(`✓ ¡Laboratorio '${payload.nombre}' creado con éxito!`);
         closeModal("modal-add-lab");
         formAddLab.reset();
 
         // Recargar datos y actualizar dropdowns en toda la aplicación
         await loadLaboratoriesData();
       } catch (err) {
-        alert("Error al agregar laboratorio: " + err.message);
+        showAlert("Error al agregar laboratorio: " + err.message);
       }
     });
   }

@@ -446,13 +446,13 @@ async function setMaintenance(activo) {
   const pregunta = activo
     ? "¿Activar el modo mantenimiento?\n\nAlumnos, docentes y limpieza no podrán usar la plataforma hasta que lo desactives. Las puertas siguen funcionando."
     : "¿Desactivar el modo mantenimiento? Todos los usuarios podrán volver a entrar.";
-  if (!confirm(pregunta)) return;
+  if (!(await showConfirm(pregunta, { title: "Modo mantenimiento", confirmText: activo ? "Activar" : "Desactivar", danger: activo }))) return;
   try {
     STATE.mantenimiento = await apiFetch("/api/system/maintenance", { method: "POST", body: { activo, mensaje } });
     renderMaintenanceState();
     closeModal("modal-maintenance");
   } catch (err) {
-    alert("No se pudo cambiar el modo mantenimiento: " + err.message);
+    showAlert("No se pudo cambiar el modo mantenimiento: " + err.message);
   }
 }
 

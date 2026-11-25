@@ -261,19 +261,19 @@ async function viewUserDetails(userId) {
 
     openModal("modal-user-details");
   } catch (err) {
-    alert("Error al obtener detalle del usuario: " + err.message);
+    showAlert("Error al obtener detalle del usuario: " + err.message);
   }
 }
 
 // Aprobar cuenta de docente autorregistrada (correo @itsoeh.edu.mx ya verificado)
 async function approveAccount(userId, nombre) {
-  if (!confirm(`¿Aprobar la cuenta de docente de ${nombre}?\n\nPodrá entrar al Portal Docente y ver el pase de lista de sus grupos.`)) return;
+  if (!(await showConfirm(`¿Aprobar la cuenta de docente de ${nombre}?\n\nPodrá entrar al Portal Docente y ver el pase de lista de sus grupos.`, { title: "Aprobar cuenta", confirmText: "Aprobar" }))) return;
   try {
     const res = await apiFetch(`/api/users/${encodeURIComponent(userId)}/approve-account`, { method: "POST" });
-    alert(res.message);
+    showAlert(res.message, { type: "success" });
     loadTeachersData();
   } catch (err) {
-    alert("No se pudo aprobar la cuenta: " + err.message);
+    showAlert("No se pudo aprobar la cuenta: " + err.message);
   }
 }
 
@@ -296,12 +296,12 @@ async function loadStudentGroupOptions() {
 }
 
 async function toggleUserStatus(userId) {
-  if (!confirm("¿Está seguro de dar de baja a este usuario?")) return;
+  if (!(await showConfirm("¿Está seguro de dar de baja a este usuario?", { title: "Dar de baja", confirmText: "Dar de baja", danger: true }))) return;
   try {
     await apiFetch(`/api/users/${userId}`, { method: "DELETE" });
     loadStudentsData();
   } catch (err) {
-    alert("Error al dar de baja: " + err.message);
+    showAlert("Error al dar de baja: " + err.message);
   }
 }
 
@@ -411,7 +411,7 @@ async function startWebcam() {
   const placeholder = document.getElementById("camera-placeholder");
 
   if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-    alert("La cámara en vivo solo funciona en http://localhost o con HTTPS.\n\nDesde el celular use el botón \"Tomar foto con el celular\".");
+    showAlert("La cámara en vivo solo funciona en http://localhost o con HTTPS.\n\nDesde el celular use el botón \"Tomar foto con el celular\".");
     return;
   }
   try {
@@ -423,7 +423,7 @@ async function startWebcam() {
     video.classList.remove("hidden");
     placeholder.classList.add("hidden");
   } catch (err) {
-    alert("No se pudo acceder a la cámara. Verifique los permisos del navegador o use \"Tomar foto con el celular\".");
+    showAlert("No se pudo acceder a la cámara. Verifique los permisos del navegador o use \"Tomar foto con el celular\".");
   }
 }
 
@@ -539,11 +539,11 @@ document.addEventListener("DOMContentLoaded", () => {
       document.getElementById("form-add-student").reset();
       loadStudentsData();
       // Ofrecer registrar el rostro de inmediato (cámara de la PC o del celular)
-      if (confirm(`Alumno ${payload.nombre_completo} registrado.\n\n¿Registrar ahora su rostro con la cámara?`)) {
+      if (await showConfirm(`Alumno ${payload.nombre_completo} registrado.\n\n¿Registrar ahora su rostro con la cámara?`, { title: "Alumno registrado", type: "success", confirmText: "Registrar rostro", cancelText: "Después" })) {
         openFaceCaptureModal(payload.id, payload.nombre_completo);
       }
     } catch (err) {
-      alert("Error al registrar alumno: " + err.message);
+      showAlert("Error al registrar alumno: " + err.message);
     }
   });
 

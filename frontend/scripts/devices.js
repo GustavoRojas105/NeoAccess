@@ -134,12 +134,12 @@ async function toggleDeviceStatus(deviceId) {
     const res = await apiFetch(`/api/devices/${deviceId}/toggle`, { method: "POST" });
     loadDevicesData();
   } catch (err) {
-    alert("Error al cambiar estado del dispositivo: " + err.message);
+    showAlert("Error al cambiar estado del dispositivo: " + err.message);
   }
 }
 
 async function testDoorUnlock(deviceId) {
-  if (!confirm("¿Abrir esta puerta de forma remota?")) return;
+  if (!(await showConfirm("¿Abrir esta puerta de forma remota?", { title: "Apertura remota", confirmText: "Abrir puerta" }))) return;
   const id = encodeURIComponent(deviceId);
   try {
     const res = await apiFetch(`/api/devices/${id}/manual-unlock`, { method: "POST" });
@@ -158,10 +158,10 @@ async function testDoorUnlock(deviceId) {
       fallido: "✗ El dispositivo recibió la orden pero no pudo ejecutarla.",
       expirado: "✗ El dispositivo no respondió a tiempo (¿está encendido y conectado?). La orden se canceló.",
     };
-    alert(mensajes[estado] || "El dispositivo aún no confirma la apertura.");
+    showAlert(mensajes[estado] || "El dispositivo aún no confirma la apertura.");
     loadDevicesData();
   } catch (err) {
-    alert("Error al emitir apertura: " + err.message);
+    showAlert("Error al emitir apertura: " + err.message);
   }
 }
 
@@ -190,7 +190,7 @@ document.addEventListener("DOMContentLoaded", () => {
       await loadDevicesData();
       showConnectRpiModal(res.dispositivo_id);
     } catch (err) {
-      alert("Error al registrar dispositivo: " + err.message);
+      showAlert("Error al registrar dispositivo: " + err.message);
     }
   });
 });

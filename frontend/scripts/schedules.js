@@ -63,14 +63,14 @@ function renderSchedulesTable(schedules) {
 }
 
 async function deleteSchedule(scheduleId) {
-  if (!confirm("¿Está seguro de eliminar este horario? Los alumnos y docentes no podrán acceder en este bloque.")) {
+  if (!(await showConfirm("¿Está seguro de eliminar este horario? Los alumnos y docentes no podrán acceder en este bloque.", { title: "Eliminar horario", confirmText: "Eliminar", danger: true }))) {
     return;
   }
   try {
     await apiFetch(`/api/schedules/${scheduleId}`, { method: "DELETE" });
     loadSchedulesData();
   } catch (err) {
-    alert("Error al eliminar horario: " + err.message);
+    showAlert("Error al eliminar horario: " + err.message);
   }
 }
 
@@ -105,7 +105,7 @@ document.addEventListener("DOMContentLoaded", () => {
       document.getElementById("form-add-schedule").reset();
       loadSchedulesData();
     } catch (err) {
-      alert("Error al registrar horario: " + err.message);
+      showAlert("Error al registrar horario: " + err.message);
     }
   });
 });
