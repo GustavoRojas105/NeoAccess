@@ -129,10 +129,46 @@ function showConnectRpiModal(deviceId) {
   document.getElementById("modal-rpi-id").textContent = dev.id;
   document.getElementById("modal-rpi-token").textContent = dev.token_api;
 
-  const downloadBtn = document.getElementById("modal-rpi-download-btn");
-  downloadBtn.href = `/api/devices/${dev.id}/config-file`;
-
+  RPI_MODAL_ID = dev.id;
   openModal("modal-connect-rpi");
+}
+
+let RPI_MODAL_ID = null;
+
+async function descargarConfigRpi() {
+  if (!RPI_MODAL_ID) return;
+  try {
+    const res = await fetch(`/api/devices/${encodeURIComponent(RPI_MODAL_ID)}/config-file`,
+      { headers: { Authorization: `Bearer ${STATE.token}` } });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `config_${RPI_MODAL_ID}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (err) {
+    showAlert("No se pudo descargar el config.json: " + err.message, { type: "error" });
+  }
+}
+
+async function regenerarTokenRpi() {
+  if (!RPI_MODAL_ID) return;
+  const ok = await showConfirm(
+    "Se generará un Token API nuevo y el actual dejará de funcionar. La Raspberry Pi no podrá conectarse hasta que copies el nuevo config.json. ¿Continuar?",
+    { title: "Regenerar token", confirmText: "Regenerar" });
+  if (!ok) return;
+  try {
+    const res = await apiFetch(`/api/devices/${encodeURIComponent(RPI_MODAL_ID)}/regenerate-token`, { method: "POST" });
+    document.getElementById("modal-rpi-token").textContent = res.token_api;
+    const dev = STATE.dispositivos.find(d => d.id === RPI_MODAL_ID);
+    if (dev) dev.token_api = res.token_api;
+    showAlert(res.message);
+  } catch (err) {
+    showAlert("No se pudo regenerar el token: " + err.message);
+  }
 }
 
 async function toggleDeviceStatus(deviceId) {

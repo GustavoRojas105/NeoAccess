@@ -1093,6 +1093,28 @@ def toggle_device(device_id: str, admin: dict = Depends(get_current_admin)):
     conn.close()
     return {"success": True, "activo": nuevo_estado, "mensaje": desc}
 
+@app.post("/api/devices/{device_id}/regenerate-token")
+def regenerate_device_token(device_id: str, admin: dict = Depends(get_current_admin)):
+    """Genera un Token API nuevo; el anterior deja de funcionar de inmediato."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM dispositivos WHERE id = ?", (device_id,))
+    if not cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Dispositivo no encontrado.")
+
+    token = generate_device_token()
+    ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute("UPDATE dispositivos SET token_api = ? WHERE id = ?", (token, device_id))
+    cursor.execute("""
+    INSERT INTO eventos_dispositivo (dispositivo_id, tipo_evento, descripcion, fecha_hora)
+    VALUES (?, 'configuracion', 'Token API regenerado por administrador (el anterior quedó invalidado)', ?);
+    """, (device_id, ahora))
+    conn.commit()
+    conn.close()
+    return {"success": True, "token_api": token,
+            "message": "Token regenerado. Descarga de nuevo el config.json y cópialo a la Raspberry Pi."}
+
 COMMAND_TTL_SECONDS = 30  # una apertura remota no ejecutada en 30 s se descarta
 
 @app.post("/api/devices/{device_id}/manual-unlock")
@@ -1146,7 +1168,6 @@ def _expire_commands(cursor):
     WHERE estado IN ('pendiente', 'entregado') AND fecha_expira < ?;
     """, (datetime.now().strftime("%Y-%m-%d %H:%M:%S"),))
 
-@app.get("/api/devices/{device_id}/config-file")
 def _server_url_for_devices(request: Request) -> str:
     """URL con la que las Raspberry Pi deben llegar a este servidor."""
     env_url = os.environ.get("NEOACCESS_PUBLIC_URL")
@@ -1167,6 +1188,7 @@ def _server_url_for_devices(request: Request) -> str:
     except Exception:
         return f"http://127.0.0.1:{port}"
 
+@app.get("/api/devices/{device_id}/config-file")
 def download_device_config(device_id: str, request: Request, admin: dict = Depends(get_current_admin)):
     conn = get_connection()
     cursor = conn.cursor()

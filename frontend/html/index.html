@@ -1114,17 +1114,22 @@
           <p class="font-semibold text-slate-800">1. Credenciales generadas para el dispositivo:</p>
           <div class="grid grid-cols-2 gap-2 text-[11px]">
             <div><span class="text-slate-500">ID Dispositivo:</span> <code id="modal-rpi-id" class="font-bold text-slate-900">--</code></div>
-            <div><span class="text-slate-500">Token API:</span> <code id="modal-rpi-token" class="font-bold text-slate-900 bg-white px-1.5 py-0.5 rounded border">--</code></div>
+            <div class="flex items-center gap-1.5 min-w-0"><span class="text-slate-500 shrink-0">Token API:</span> <code id="modal-rpi-token" class="font-bold text-slate-900 bg-white px-1.5 py-0.5 rounded border truncate">--</code>
+              <button type="button" onclick="regenerarTokenRpi()" title="Generar un token nuevo" aria-label="Generar un token nuevo" class="shrink-0 p-1 rounded border border-slate-300 bg-white text-slate-500 hover:text-slate-900 hover:bg-slate-100">
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
           </div>
+          <p class="text-[11px] text-slate-500">El config.json ya trae este token y la IP de esta computadora. Si regeneras el token, el anterior deja de servir: vuelve a descargar el config.json y reemplázalo en la Raspberry Pi.</p>
         </div>
 
         <div class="space-y-2">
           <p class="font-semibold text-slate-800">2. Descargar archivo de configuración automática:</p>
-          <a id="modal-rpi-download-btn" href="#" download class="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-800 text-white rounded-lg hover:bg-slate-900 text-xs">
+          <button type="button" id="modal-rpi-download-btn" onclick="descargarConfigRpi()" class="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-800 text-white rounded-lg hover:bg-slate-900 text-xs">
             <i data-lucide="download" class="w-3.5 h-3.5"></i>
             <span>Descargar config.json para Raspberry Pi</span>
-          </a>
-          <p class="text-[11px] text-slate-500">Guarda este archivo dentro de la carpeta <code>raspberry_pi/</code> en tu Raspberry Pi Zero W.</p>
+          </button>
+          <p class="text-[11px] text-slate-500">Renómbralo a <code>config.json</code> y guárdalo dentro de la carpeta <code>raspberry_pi/</code> en tu Raspberry Pi Zero W.</p>
         </div>
 
         <div class="space-y-2">
@@ -1714,7 +1719,7 @@
   <script src="/scripts/app.js?v=20261125_2"></script>
   <script src="/scripts/laboratories.js?v=20261124_11"></script>
   <script src="/scripts/metrics.js?v=20261124_11"></script>
-  <script src="/scripts/devices.js?v=20261124_11"></script>
+  <script src="/scripts/devices.js?v=20261125_2"></script>
   <script src="/scripts/schedules.js?v=20261125_1"></script>
   <script src="/scripts/users.js?v=20261124_11"></script>
   <script src="/scripts/reports.js?v=20261124_11"></script>

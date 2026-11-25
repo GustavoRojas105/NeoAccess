@@ -261,6 +261,20 @@ class TestCuentasPortal(Base):
         self.assertEqual(C.put("/api/users/DOC-ISC", headers=self.DO, json=d).status_code, 403)
 
 
+class TestTokenDispositivo(Base):
+    def test_regenerar_token_invalida_el_anterior(self):
+        viejo = C.post("/api/devices", headers=self.A, json={"id": "RPI-TOK", "laboratorio_id": "LAB-RED", "nombre": "Puerta Token"}).json()["token_api"]
+        latido = lambda tok: C.post("/api/iot/heartbeat", json={"dispositivo_id": "RPI-TOK", "token_api": tok}).status_code
+        self.assertEqual(latido(viejo), 200)
+        self.assertEqual(C.post("/api/devices/RPI-TOK/regenerate-token", headers=self.J).status_code, 403)   # solo admin
+        self.assertEqual(C.post("/api/devices/NO-EXISTE/regenerate-token", headers=self.A).status_code, 404)
+        nuevo = C.post("/api/devices/RPI-TOK/regenerate-token", headers=self.A).json()["token_api"]
+        self.assertNotEqual(nuevo, viejo)
+        self.assertEqual(latido(viejo), 403)
+        self.assertEqual(latido(nuevo), 200)
+        self.assertIn(nuevo, C.get("/api/devices/RPI-TOK/config-file", headers=self.A).text)
+
+
 # ───────────────────────── Horarios: límites ─────────────────────────
 class TestHorarios(Base):
     def horario(self, ini, fin, dia="Viernes", lab="LAB-RED", H=None, **extra):
