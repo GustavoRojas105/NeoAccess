@@ -1494,7 +1494,7 @@ def get_schedules(
     params = [periodo_id]
     permitidas = carreras_de(admin)
     if permitidas is not None:
-        query += f" AND g.carrera IN ({','.join('?' * len(permitidas)) or 'NULL'})"
+        query += f" AND COALESCE(g.carrera, l.carrera) IN ({','.join('?' * len(permitidas)) or 'NULL'})"
         params.extend(permitidas)
     if laboratorio_id and laboratorio_id != "todos":
         query += " AND h.laboratorio_id = ?"
@@ -1609,7 +1609,8 @@ async def import_schedules(
 def delete_schedule(schedule_id: int, admin: dict = Depends(get_current_staff)):
     conn = get_connection()
     cursor = conn.cursor()
-    row = cursor.execute("""SELECT h.periodo_id, g.carrera FROM horarios h LEFT JOIN grupos g ON g.id = h.grupo_id
+    row = cursor.execute("""SELECT h.periodo_id, COALESCE(g.carrera, l.carrera) AS carrera FROM horarios h
+                            LEFT JOIN grupos g ON g.id = h.grupo_id LEFT JOIN laboratorios l ON l.id = h.laboratorio_id
                             WHERE h.id = ?""", (schedule_id,)).fetchone()
     try:
         if not row:

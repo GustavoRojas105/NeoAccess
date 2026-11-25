@@ -21,6 +21,10 @@ CATALOGO_MATERIAS = os.path.join(RAIZ, "frontend", "scripts", "materias_itsoeh.j
 DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"]
 HORA_MIN, HORA_MAX = "06:00", "22:00"
 SEPARADOR = " — "  # en la plantilla: "CLAVE — Nombre"
+# Actividades del laboratorio sin docente (práctica libre, club, proyecto integrador, inglés...)
+SIN_DOCENTE = "SIN-DOCENTE"
+SIN_DOCENTE_TEXTO = "Sin docente (actividad del laboratorio)"
+_ALIAS_SIN_DOCENTE = {"sin-docente", "sin docente", "ninguno", "actividad", "n/a", "-"}
 
 COLUMNAS = [
     ("dia", "Día"),
@@ -104,17 +108,25 @@ def _se_traslapan(a_ini, a_fin, b_ini, b_fin) -> bool:
     return a_ini < b_fin and b_ini < a_fin
 
 
+def es_sin_docente(valor) -> bool:
+    """'SIN-DOCENTE', 'SIN-DOCENTE — Sin docente (...)', 'sin docente', 'Actividad'..."""
+    return _norm(_clave(valor)) in _ALIAS_SIN_DOCENTE
+
+
 def validar_horario(datos: dict, cursor, ocupados: list, materias: dict = None,
                     periodo_id: str = None, carreras: list = None):
     """
     datos: dia, hora_inicio, hora_fin, laboratorio, grupo, docente, materia (texto libre).
-    ocupados: horarios ya aceptados en este lote [(lab, dia, ini, fin, grupo, docente)].
+      docente = SIN-DOCENTE -> actividad del laboratorio: el grupo es opcional y la materia es texto libre
+      (ej. "Práctica de Redes", "Club IoT"). Sin grupo, el bloque solo aparta el laboratorio.
+    ocupados: horarios ya aceptados en este lote [(lab, dia, ini, fin, grupo, docente[, materia])].
     periodo_id: periodo activo (grupos y choques solo de ese periodo).
     carreras: si se indica (jefe de carrera), el grupo debe ser de una de esas carreras.
     Devuelve (horario listo para insertar | None, [errores]).
     """
     materias = materias or cargar_materias()
     errores = []
+    actividad = es_sin_docente(datos.get("docente"))
 
     dia = next((d for d in DIAS if _norm(d) == _norm(datos.get("dia"))), None)
     if not dia:
@@ -131,8 +143,8 @@ def validar_horario(datos: dict, cursor, ocupados: list, materias: dict = None,
         elif ini < HORA_MIN or fin > HORA_MAX:
             errores.append(f"El horario debe estar entre {HORA_MIN} y {HORA_MAX}.")
 
-    lab = _buscar(cursor, "SELECT id, nombre, activo FROM laboratorios WHERE upper(id) = upper(?) OR ? = ''",
-                  "SELECT id, nombre, activo FROM laboratorios", datos.get("laboratorio"))
+    lab = _buscar(cursor, "SELECT id, nombre, activo, carrera FROM laboratorios WHERE upper(id) = upper(?) OR ? = ''",
+                  "SELECT id, nombre, activo, carrera FROM laboratorios", datos.get("laboratorio"))
     if not datos.get("laboratorio"):
         errores.append("Falta el laboratorio.")
     elif not lab:
@@ -145,20 +157,26 @@ def validar_horario(datos: dict, cursor, ocupados: list, materias: dict = None,
                     "SELECT id, nombre, carrera FROM grupos WHERE periodo_id IS ?",
                     datos.get("grupo"), extra=(periodo_id,))
     if not datos.get("grupo"):
-        errores.append("Falta el grupo.")
+        if not actividad:
+            errores.append("Falta el grupo.")
     elif not grupo:
         errores.append(f"El grupo '{_clave(datos.get('grupo'))}' no existe en el periodo actual.")
     elif carreras is not None and grupo["carrera"] not in carreras:
         errores.append(f"El grupo {grupo['id']} es de {grupo['carrera']}, que no está a su cargo.")
         grupo = None
+    if (actividad and not datos.get("grupo") and lab and carreras is not None
+            and lab["carrera"] not in carreras):
+        errores.append(f"El laboratorio {lab['id']} es de {lab['carrera']}, que no está a su cargo.")
 
-    docente = _buscar(
+    docente = None if actividad else _buscar(
         cursor,
         "SELECT id, nombre_completo AS nombre, tipo, estado FROM usuarios WHERE upper(id) = upper(?) OR upper(matricula_clave) = upper(?)",
         "SELECT id, nombre_completo AS nombre, tipo, estado FROM usuarios WHERE tipo = 'docente'",
         datos.get("docente"))
-    if not datos.get("docente"):
-        errores.append("Falta el docente.")
+    if actividad:
+        pass
+    elif not datos.get("docente"):
+        errores.append("Falta el docente (o SIN-DOCENTE si es una actividad del laboratorio).")
     elif not docente:
         errores.append(f"El docente '{_clave(datos.get('docente'))}' no existe.")
     elif docente["tipo"] != "docente":
@@ -169,7 +187,13 @@ def validar_horario(datos: dict, cursor, ocupados: list, materias: dict = None,
     materia = None
     texto_materia = datos.get("materia")
     if not str(texto_materia or "").strip():
-        errores.append("Falta la materia.")
+        errores.append("Falta el nombre de la actividad." if actividad else "Falta la materia.")
+    elif actividad:
+        materia = " ".join(str(texto_materia).split())
+        oficiales = {_norm(m): m for lista in materias.values() for m in lista}
+        materia = oficiales.get(_norm(materia), materia)  # si es materia oficial, con su nombre oficial
+        if not 2 <= len(materia) <= 80:
+            errores.append("El nombre de la actividad debe tener de 2 a 80 caracteres.")
     else:
         todas = {_norm(m): m for lista in materias.values() for m in lista}
         materia = todas.get(_norm(texto_materia))
@@ -178,20 +202,31 @@ def validar_horario(datos: dict, cursor, ocupados: list, materias: dict = None,
         elif grupo and grupo["carrera"] in materias and materia not in materias[grupo["carrera"]]:
             errores.append(f"'{materia}' no pertenece a la carrera del grupo ({grupo['carrera']}).")
 
-    # Choques de horario: mismo laboratorio, mismo grupo o mismo docente a la misma hora
+    # Choques de horario: mismo laboratorio, mismo grupo o mismo docente a la misma hora.
+    # Excepción: clase compartida (misma materia y horas, mismo docente o ambos sin docente, otro grupo),
+    # p. ej. "Inglés VII" para 7A y 7B juntos en el mismo laboratorio: una fila por grupo.
+    grupo_id = grupo["id"] if grupo else None
+    docente_id = docente["id"] if docente else None
     if not errores:
         existentes = cursor.execute(
-            "SELECT laboratorio_id, dia_semana, hora_inicio, hora_fin, grupo_id, docente_id FROM horarios "
+            "SELECT laboratorio_id, dia_semana, hora_inicio, hora_fin, grupo_id, docente_id, materia FROM horarios "
             "WHERE dia_semana = ? AND periodo_id IS ?", (dia, periodo_id)).fetchall()
-        candidatos = [tuple(r) for r in existentes] + [o for o in ocupados if o[1] == dia]
-        for (o_lab, _d, o_ini, o_fin, o_grupo, o_doc) in candidatos:
+        candidatos = [tuple(r) for r in existentes] + [tuple(o) for o in ocupados if o[1] == dia]
+        for o in candidatos:
+            o_lab, _d, o_ini, o_fin, o_grupo, o_doc = o[:6]
+            o_materia = o[6] if len(o) > 6 else None
             if not _se_traslapan(ini, fin, o_ini, o_fin):
+                continue
+            compartida = bool(o_lab == lab["id"] and grupo_id and o_grupo and o_grupo != grupo_id
+                              and o_doc == docente_id and (o_ini, o_fin) == (ini, fin)
+                              and _norm(o_materia) == _norm(materia))
+            if compartida:
                 continue
             if o_lab == lab["id"]:
                 errores.append(f"El laboratorio {lab['id']} ya está ocupado el {dia} de {o_ini} a {o_fin}.")
-            elif o_grupo == grupo["id"]:
-                errores.append(f"El grupo {grupo['id']} ya tiene clase el {dia} de {o_ini} a {o_fin}.")
-            elif o_doc == docente["id"]:
+            elif grupo_id and o_grupo == grupo_id:
+                errores.append(f"El grupo {grupo_id} ya tiene clase el {dia} de {o_ini} a {o_fin}.")
+            elif docente_id and o_doc == docente_id:
                 errores.append(f"El docente ya da clase el {dia} de {o_ini} a {o_fin}.")
             if errores:
                 break
@@ -199,10 +234,11 @@ def validar_horario(datos: dict, cursor, ocupados: list, materias: dict = None,
     if errores:
         return None, errores
     return {
-        "grupo_id": grupo["id"], "laboratorio_id": lab["id"], "docente_id": docente["id"], "periodo_id": periodo_id,
+        "grupo_id": grupo_id, "laboratorio_id": lab["id"], "docente_id": docente_id, "periodo_id": periodo_id,
         "materia": materia, "dia_semana": dia, "hora_inicio": ini, "hora_fin": fin,
         # Para mostrar en la vista previa
-        "laboratorio_nombre": lab["nombre"], "grupo_nombre": grupo["nombre"], "docente_nombre": docente["nombre"],
+        "laboratorio_nombre": lab["nombre"], "grupo_nombre": grupo["nombre"] if grupo else "",
+        "docente_nombre": docente["nombre"] if docente else SIN_DOCENTE_TEXTO,
     }, []
 
 
@@ -285,7 +321,7 @@ def generar_plantilla(cursor, periodo_id: str = None, carreras: list = None, per
     grupos = [f"{r['id']}{SEPARADOR}{r['nombre']}" for r in cursor.execute(
         "SELECT id, nombre, carrera FROM grupos WHERE periodo_id IS ? ORDER BY carrera, semestre, id", (periodo_id,))
         if carreras is None or r["carrera"] in carreras]
-    docentes = [f"{r['id']}{SEPARADOR}{r['nombre_completo']}" for r in cursor.execute(
+    docentes = [f"{SIN_DOCENTE}{SEPARADOR}{SIN_DOCENTE_TEXTO}"] + [f"{r['id']}{SEPARADOR}{r['nombre_completo']}" for r in cursor.execute(
         "SELECT id, nombre_completo FROM usuarios WHERE tipo = 'docente' AND estado = 'activo' ORDER BY nombre_completo")]
     catalogo = cargar_materias()
     materias = sorted({m for c, lista in catalogo.items() if carreras is None or c in carreras for m in lista}, key=_norm)
@@ -344,7 +380,8 @@ def generar_plantilla(cursor, periodo_id: str = None, carreras: list = None, per
     desplegable("D", rangos["Laboratorios"], "Laboratorios")
     desplegable("E", rangos["Grupos"], "Grupos")
     desplegable("F", rangos["Docentes"], "Docentes")
-    desplegable("G", rangos["Materias oficiales"], "Materias oficiales")
+    # Solo advierte: las actividades sin docente llevan un nombre libre
+    desplegable("G", rangos["Materias oficiales"], "Materias oficiales", estricto=False)
 
     # Instrucciones
     ins = wb.create_sheet("Instrucciones")
@@ -356,12 +393,15 @@ def generar_plantilla(cursor, periodo_id: str = None, carreras: list = None, per
         ("2. Use las listas desplegables: Día, Laboratorio, Grupo, Docente y Materia solo aceptan valores registrados en el sistema.", False),
         ("3. Horas en formato de 24 h (HH:MM), entre 06:00 y 22:00. Puede elegirlas de la lista o escribirlas (ej. 07:15).", False),
         ("4. La materia debe pertenecer a la carrera del grupo (materias oficiales del ITSOEH).", False),
-        ("5. No se aceptan choques: el mismo laboratorio, grupo o docente no puede tener dos clases a la misma hora.", False),
-        ("6. Guarde el archivo y súbalo en Horarios y Grupos → Importar horarios. Antes de guardar verá una revisión fila por fila.", False),
+        ("5. No se aceptan choques: el mismo laboratorio, grupo o docente no puede tener dos clases a la misma hora. "
+         "Excepción: una clase compartida (misma materia y horas, varios grupos) va en una fila por grupo.", False),
+        (f"6. Actividades sin docente (práctica libre, club, proyecto integrador): en Docente elija «{SIN_DOCENTE}», "
+         "el grupo es opcional y en Materia escriba el nombre de la actividad. Sin grupo, el bloque solo aparta el laboratorio.", False),
+        ("7. Guarde el archivo y súbalo en Horarios y Grupos → Importar horarios. Antes de guardar verá una revisión fila por fila.", False),
         ("", False),
         ("Si falta un laboratorio, grupo o docente en las listas, regístrelo primero en el Dashboard y descargue la plantilla de nuevo.", False),
         (f"Plantilla generada el {datetime.now().strftime('%d/%m/%Y %H:%M')} con {len(labs)} laboratorio(s), "
-         f"{len(grupos)} grupo(s) y {len(docentes)} docente(s).", False),
+         f"{len(grupos)} grupo(s) y {len(docentes) - 1} docente(s).", False),
     ]
     for i, (texto, negrita) in enumerate(lineas, start=1):
         c = ins.cell(row=i, column=1, value=texto)

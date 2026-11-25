@@ -152,7 +152,7 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         grupo_id TEXT,
         laboratorio_id TEXT NOT NULL,
-        docente_id TEXT NOT NULL,
+        docente_id TEXT,                    -- NULL = actividad del laboratorio sin docente
         materia TEXT NOT NULL,
         dia_semana TEXT NOT NULL,
         hora_inicio TEXT NOT NULL,
@@ -287,6 +287,36 @@ def init_db():
     if "periodo_id" not in _columnas("registros_acceso"):
         cursor.execute("ALTER TABLE registros_acceso ADD COLUMN periodo_id TEXT;")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_accesos_periodo ON registros_acceso (periodo_id);")
+
+    # horarios.docente_id pasa a ser opcional (actividades sin docente). SQLite no permite quitar
+    # NOT NULL con ALTER: se reconstruye la tabla conservando ids y datos.
+    docente_col = [r for r in cursor.execute("PRAGMA table_info(horarios);").fetchall() if r[1] == "docente_id"]
+    if docente_col and docente_col[0][3]:  # notnull = 1
+        conn.commit()
+        conn.execute("PRAGMA foreign_keys = OFF;")
+        cursor.executescript("""
+        BEGIN;
+        CREATE TABLE horarios_nueva (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            grupo_id TEXT,
+            laboratorio_id TEXT NOT NULL,
+            docente_id TEXT,
+            materia TEXT NOT NULL,
+            dia_semana TEXT NOT NULL,
+            hora_inicio TEXT NOT NULL,
+            hora_fin TEXT NOT NULL,
+            periodo_id TEXT,
+            FOREIGN KEY (grupo_id) REFERENCES grupos (id) ON DELETE CASCADE,
+            FOREIGN KEY (laboratorio_id) REFERENCES laboratorios (id) ON DELETE CASCADE,
+            FOREIGN KEY (docente_id) REFERENCES usuarios (id) ON DELETE CASCADE
+        );
+        INSERT INTO horarios_nueva (id, grupo_id, laboratorio_id, docente_id, materia, dia_semana, hora_inicio, hora_fin, periodo_id)
+            SELECT id, grupo_id, laboratorio_id, docente_id, materia, dia_semana, hora_inicio, hora_fin, periodo_id FROM horarios;
+        DROP TABLE horarios;
+        ALTER TABLE horarios_nueva RENAME TO horarios;
+        COMMIT;
+        """)
+        conn.execute("PRAGMA foreign_keys = ON;")
 
     # Periodo inicial según la fecha de hoy, y asignar lo existente al periodo activo
     if not cursor.execute("SELECT 1 FROM periodos WHERE estado = 'activo'").fetchone():

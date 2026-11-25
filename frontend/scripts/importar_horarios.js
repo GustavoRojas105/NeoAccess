@@ -56,7 +56,7 @@ function renderImportReview(res) {
         <td class="px-3 py-2 font-mono text-slate-500">${esc(f.fila)}</td>
         <td class="px-3 py-2 whitespace-nowrap">${okFila ? `${esc(h.dia_semana)}<br>${esc(h.hora_inicio)}–${esc(h.hora_fin)}` : `${esc(d.dia)}<br>${esc(d.hora_inicio)}–${esc(d.hora_fin)}`}</td>
         <td class="px-3 py-2">${esc(okFila ? h.laboratorio_nombre : d.laboratorio)}</td>
-        <td class="px-3 py-2">${esc(okFila ? h.grupo_id : d.grupo)}</td>
+        <td class="px-3 py-2">${esc(okFila ? (h.grupo_id || "Libre") : d.grupo)}</td>
         <td class="px-3 py-2">${esc(okFila ? h.docente_nombre : d.docente)}</td>
         <td class="px-3 py-2">${esc(okFila ? h.materia : d.materia)}</td>
         <td class="px-3 py-2 ${okFila ? "text-emerald-700 font-semibold" : "text-red-700"}">
@@ -68,7 +68,7 @@ function renderImportReview(res) {
   // Celular: una tarjeta por fila, con el motivo del error visible
   document.getElementById("import-cards").innerHTML = res.filas.map(f => {
     const h = f.horario, d = f.datos;
-    const v = (campoH, campoD) => esc(h ? h[campoH] : d[campoD]);
+    const v = (campoH, campoD) => esc(h ? (h[campoH] ?? (campoH === "grupo_id" ? "Libre" : "")) : d[campoD]);
     return `
       <div class="p-3 rounded-lg border ${h ? "border-emerald-200 bg-white" : "border-red-200 bg-red-50/60"}">
         <div class="flex items-center justify-between gap-2">

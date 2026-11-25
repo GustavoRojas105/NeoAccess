@@ -1,5 +1,5 @@
 {
-  "_fuente": "https://www.itsoeh.edu.mx/front/services.html (consultada 24/11/2026). Clave \"0\" = asignaturas publicadas sin semestre (PILA2021); Ingeniería Civil: retícula ICIV-2010-208.",
+  "_fuente": "https://www.itsoeh.edu.mx/front/services.html (consultada 24/11/2026). Clave \"0\" = asignaturas publicadas sin semestre (PILA2021); Ingeniería Civil: retícula ICIV-2010-208. ISC y TIC: semestres y materias según los horarios de laboratorio oficiales de cada división, periodo Ago-Dic 2026.",
   "carreras": {
     "Ingeniería Civil": {
       "1": [
@@ -90,12 +90,31 @@
       ]
     },
     "Ingeniería en Sistemas Computacionales": {
-      "0": [
-        "Conmutación y Enrutamiento en Redes de Datos",
-        "Lenguajes y Autómatas II",
-        "Matemáticas Discretas",
-        "Programación Web",
+      "1": [
+        "Fundamentos de Programación",
+        "Matemáticas Discretas"
+      ],
+      "3": [
+        "Estructura de Datos",
         "Sistemas Operativos I"
+      ],
+      "5": [
+        "Ingeniería de Software",
+        "Fundamentos de Telecomunicaciones",
+        "Programación Web",
+        "Taller de Base de Datos",
+        "Arquitectura de Computadoras"
+      ],
+      "7": [
+        "Conmutación y Enrutamiento en Redes de Datos",
+        "Inteligencia Artificial",
+        "Diseño UX/UI",
+        "Aplicaciones Móviles I",
+        "Tópicos de Base de Datos",
+        "Sistemas Programables"
+      ],
+      "0": [
+        "Lenguajes y Autómatas II"
       ]
     },
     "Ingeniería en Gestión Empresarial": {
@@ -123,11 +142,31 @@
       ]
     },
     "Ingeniería en Tecnologías de la Información y Comunicaciones": {
-      "0": [
-        "Interacción Humano Computadora",
+      "1": [
+        "Fundamentos de Programación",
+        "Matemáticas Discretas I",
+        "Introducción a las TIC's",
+        "Tutoría de Estudiantes I"
+      ],
+      "3": [
+        "Fundamentos de Bases de Datos",
+        "Estructura y Organización de Datos"
+      ],
+      "5": [
+        "Sistemas Operativos I",
+        "Taller de Ingeniería de Software",
+        "Telecomunicaciones",
+        "Base de Datos Distribuidas",
+        "Redes de Computadoras"
+      ],
+      "7": [
         "Negocios Electrónicos I",
-        "Redes de Computadoras",
-        "Sistemas Operativos I"
+        "Desarrollo de Aplicaciones para Dispositivos Móviles",
+        "Administración y Seguridad de Redes",
+        "Internet de las Cosas"
+      ],
+      "0": [
+        "Interacción Humano Computadora"
       ]
     },
     "Ingeniería en Logística": {

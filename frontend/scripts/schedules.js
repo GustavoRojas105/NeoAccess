@@ -41,14 +41,14 @@ function renderSchedulesTable(schedules) {
         </td>
         <td class="px-4 py-3">
           <span class="inline-block px-2 py-0.5 bg-slate-200 text-slate-800 rounded text-[11px] font-semibold">
-            ${esc(s.grupo_clave || s.grupo_id || 'N/A')}
+            ${esc(s.grupo_clave || s.grupo_id || (s.docente_id ? 'N/A' : 'Libre'))}
           </span>
           <div class="text-[10px] text-slate-400 mt-0.5">${esc(s.grupo_nombre || "")}${s.grupo_carrera ? " • " + esc(s.grupo_carrera) : ""}</div>
         </td>
         <td class="px-4 py-3 font-medium text-slate-800">${esc(s.materia)}</td>
         <td class="px-4 py-3 text-slate-700">
           <i data-lucide="user-check" class="w-3.5 h-3.5 inline text-slate-400 mr-1"></i>
-          <span>${esc(s.docente_nombre || s.docente_id)}</span>
+          <span>${s.docente_id ? esc(s.docente_nombre || s.docente_id) : '<span class="italic text-slate-400">Sin docente (actividad)</span>'}</span>
         </td>
         <td class="px-4 py-3 text-right">
           <button onclick="deleteSchedule(${esc(s.id)})" class="p-1 text-slate-400 hover:text-red-600 transition" title="Eliminar Horario">
@@ -92,9 +92,28 @@ async function loadScheduleFormOptions() {
       ? `<option value="">Seleccione un docente...</option>` + docentes.map(d =>
           `<option value="${esc(d.id)}">${esc(d.nombre_completo)} (${esc(d.matricula_clave)})</option>`).join("")
       : `<option value="">No hay docentes: regístrelos en Maestros y Personal</option>`;
+    selDocente.innerHTML += `<option value="SIN-DOCENTE">— Sin docente (actividad del laboratorio) —</option>`;
   } catch (err) {
     selDocente.innerHTML = `<option value="">No se pudieron cargar los docentes</option>`;
   }
+  toggleScheduleActivityMode();
+}
+
+// "Sin docente": el grupo es opcional y la materia se escribe (Práctica de Redes, Club IoT...)
+function toggleScheduleActivityMode() {
+  const actividad = document.getElementById("schedule-new-teacher")?.value === "SIN-DOCENTE";
+  const selGrupo = document.getElementById("schedule-new-group");
+  const selMateria = document.getElementById("schedule-new-subject");
+  const txt = document.getElementById("schedule-new-activity");
+  if (!selGrupo || !selMateria || !txt) return;
+  selGrupo.required = !actividad;
+  selMateria.required = !actividad;
+  selMateria.classList.toggle("hidden", actividad);
+  txt.required = actividad;
+  txt.classList.toggle("hidden", !actividad);
+  document.getElementById("schedule-new-activity-help")?.classList.toggle("hidden", !actividad);
+  const label = document.getElementById("schedule-new-subject-label");
+  if (label) label.textContent = actividad ? "Nombre de la actividad *" : "Materia (retícula oficial ITSOEH) *";
 }
 
 async function deleteSchedule(scheduleId) {
@@ -120,6 +139,8 @@ document.addEventListener("DOMContentLoaded", () => {
     openModal("modal-add-schedule");
   });
 
+  document.getElementById("schedule-new-teacher")?.addEventListener("change", toggleScheduleActivityMode);
+
   // Al elegir el grupo, la lista de materias muestra las de su carrera (y semestre)
   document.getElementById("schedule-new-group")?.addEventListener("change", (e) => {
     const opt = e.target.selectedOptions[0];
@@ -132,7 +153,9 @@ document.addEventListener("DOMContentLoaded", () => {
       laboratorio_id: document.getElementById("schedule-new-lab").value,
       grupo_id: document.getElementById("schedule-new-group").value || null,
       docente_id: document.getElementById("schedule-new-teacher").value,
-      materia: document.getElementById("schedule-new-subject").value.trim(),
+      materia: (document.getElementById("schedule-new-teacher").value === "SIN-DOCENTE"
+        ? document.getElementById("schedule-new-activity").value
+        : document.getElementById("schedule-new-subject").value).trim(),
       dia_semana: document.getElementById("schedule-new-day").value,
       hora_inicio: document.getElementById("schedule-new-start").value,
       hora_fin: document.getElementById("schedule-new-end").value
@@ -145,6 +168,7 @@ document.addEventListener("DOMContentLoaded", () => {
       });
       closeModal("modal-add-schedule");
       document.getElementById("form-add-schedule").reset();
+      toggleScheduleActivityMode();
       loadSchedulesData();
     } catch (err) {
       showAlert("Error al registrar horario: " + err.message);

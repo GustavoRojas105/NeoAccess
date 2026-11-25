@@ -1233,8 +1233,10 @@
         </div>
 
         <div>
-          <label class="block font-semibold text-slate-700 mb-1">Materia (retícula oficial ITSOEH) *</label>
+          <label id="schedule-new-subject-label" class="block font-semibold text-slate-700 mb-1">Materia (retícula oficial ITSOEH) *</label>
           <select id="schedule-new-subject" required class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg"></select>
+          <input type="text" id="schedule-new-activity" maxlength="80" placeholder="Ej. Práctica de Redes, Club IoT, Proyecto Integrador" class="hidden w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+          <p id="schedule-new-activity-help" class="hidden text-[11px] text-slate-500 mt-1">Actividad sin docente: el grupo es opcional. Sin grupo, el bloque solo aparta el laboratorio (nadie entra automáticamente).</p>
         </div>
 
         <div class="grid grid-cols-3 gap-2">

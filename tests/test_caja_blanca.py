@@ -268,6 +268,41 @@ class TestValidarHorario(unittest.TestCase):
         h, err = self.validar(self.base(), carreras=[ISC])
         self.assertEqual(err, [])
 
+    def test_actividad_sin_docente_ni_grupo(self):
+        h, err = self.validar(self.base(docente="SIN-DOCENTE", grupo="", materia="  Práctica   de Redes "))
+        self.assertEqual(err, [], err)
+        self.assertEqual((h["docente_id"], h["grupo_id"], h["materia"]), (None, None, "Práctica de Redes"))
+        # Alias aceptados y la opción de la plantilla "SIN-DOCENTE — ..."
+        for alias in ("sin docente", "Actividad", f"SIN-DOCENTE{hi.SEPARADOR}{hi.SIN_DOCENTE_TEXTO}"):
+            with self.subTest(alias=alias):
+                self.assertEqual(self.validar(self.base(docente=alias, grupo="", materia="Club IoT"))[1], [])
+        h, err = self.validar(self.base(docente="SIN-DOCENTE", grupo="", materia=""))
+        self.assertTrue(any("Falta el nombre de la actividad" in e for e in err))
+
+    def test_actividad_sin_docente_aparta_el_laboratorio(self):
+        h, err = self.validar(self.base(), ocupados=[("LAB-RED", "Lunes", "08:00", "09:00", None, None, "Club IoT")])
+        self.assertTrue(any("LAB-RED ya está ocupado" in e for e in err), err)
+        # Dos actividades sin docente ni grupo en labs distintos no chocan entre sí
+        h, err = self.validar(self.base(docente="SIN-DOCENTE", grupo="", materia="Club IoT", laboratorio="LAB-CIV"),
+                              ocupados=[("LAB-RED", "Lunes", "07:00", "09:00", None, None, "Club IoT")])
+        self.assertEqual(err, [], err)
+
+    def test_actividad_sin_grupo_respeta_carreras_del_jefe(self):
+        h, err = self.validar(self.base(docente="SIN-DOCENTE", grupo="", materia="Práctica", laboratorio="LAB-CIV"), carreras=[ISC])
+        self.assertTrue(any("no está a su cargo" in e for e in err), err)
+        self.assertEqual(self.validar(self.base(docente="SIN-DOCENTE", grupo="", materia="Práctica"), carreras=[ISC])[1], [])
+
+    def test_clase_compartida_varios_grupos(self):
+        # Inglés para 7A y 7B juntos: misma materia, mismas horas, mismo lab, otro grupo -> se permite
+        ocupado = ("LAB-RED", "Lunes", "07:00", "09:00", "OTRO-GRUPO", None, "Inglés VII")
+        h, err = self.validar(self.base(docente="SIN-DOCENTE", materia="Inglés VII"), ocupados=[ocupado])
+        self.assertEqual(err, [], err)
+        # Si cambia la materia o las horas, sí es choque
+        h, err = self.validar(self.base(docente="SIN-DOCENTE", materia="Club IoT"), ocupados=[ocupado])
+        self.assertTrue(any("ya está ocupado" in e for e in err), err)
+        h, err = self.validar(self.base(docente="SIN-DOCENTE", materia="Inglés VII", hora_fin="08:00"), ocupados=[ocupado])
+        self.assertTrue(any("ya está ocupado" in e for e in err), err)
+
     def test_grupo_de_otro_periodo_no_se_encuentra(self):
         h, err = hi.validar_horario(self.base(), self.cur, [], periodo_id="1999-1")
         self.assertTrue(any("no existe en el periodo actual" in e for e in err))
