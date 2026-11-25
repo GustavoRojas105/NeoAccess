@@ -2078,7 +2078,7 @@ def get_users(
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
     for r in rows:
-        r.pop("password_hash", None)  # nunca exponer hashes de contraseña
+        r["tiene_password"] = bool(r.pop("password_hash", None))  # nunca exponer hashes de contraseña
     return rows
 
 TIPOS_USUARIO = ("alumno", "docente", "personal_limpieza")
@@ -2093,7 +2093,10 @@ def _validar_usuario(payload: UserCreate, cursor) -> dict:
         "carrera": (payload.carrera or "").strip() or None,
         "grupo_id": (payload.grupo_id or "").strip().upper() or None,
         "estado": (payload.estado or "activo").strip() or "activo",
+        "password": payload.password or None,
     }
+    if datos["password"] is not None and not 8 <= len(datos["password"]) <= 128:
+        raise HTTPException(status_code=400, detail="La contraseña debe tener de 8 a 128 caracteres.")
     if not datos["id"] or not datos["nombre_completo"] or not datos["matricula_clave"]:
         raise HTTPException(status_code=400, detail="El ID, el nombre y la matrícula/clave son obligatorios.")
     if datos["tipo"] not in TIPOS_USUARIO:
@@ -2137,9 +2140,10 @@ def create_user(payload: UserCreate, admin: dict = Depends(get_current_staff)):
             raise HTTPException(status_code=400, detail="El ID o la matrícula/clave ya existen.")
         try:
             cursor.execute("""
-            INSERT INTO usuarios (id, nombre_completo, tipo, matricula_clave, carrera, grupo_id, estado)
-            VALUES (?, ?, ?, ?, ?, ?, ?);
-            """, (d["id"], d["nombre_completo"], d["tipo"], d["matricula_clave"], d["carrera"], d["grupo_id"], d["estado"]))
+            INSERT INTO usuarios (id, nombre_completo, tipo, matricula_clave, carrera, grupo_id, estado, password_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+            """, (d["id"], d["nombre_completo"], d["tipo"], d["matricula_clave"], d["carrera"], d["grupo_id"], d["estado"],
+                  hash_password(d["password"]) if d["password"] else None))
             conn.commit()
         except sqlite3.IntegrityError as e:
             conn.rollback()
@@ -2153,8 +2157,8 @@ def update_user(user_id: str, payload: UserCreate, admin: dict = Depends(get_cur
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM usuarios WHERE id = ?", (user_id,))
-        if not cursor.fetchone():
+        actual = cursor.execute("SELECT tipo, estado FROM usuarios WHERE id = ?", (user_id,)).fetchone()
+        if not actual:
             raise HTTPException(status_code=404, detail="Usuario no encontrado.")
         d = _validar_usuario(payload, cursor)
         cursor.execute("SELECT 1 FROM usuarios WHERE matricula_clave = ? AND id <> ?", (d["matricula_clave"], user_id))
@@ -2166,11 +2170,16 @@ def update_user(user_id: str, payload: UserCreate, admin: dict = Depends(get_cur
             SET nombre_completo = ?, tipo = ?, matricula_clave = ?, carrera = ?, grupo_id = ?, estado = ?
             WHERE id = ?;
             """, (d["nombre_completo"], d["tipo"], d["matricula_clave"], d["carrera"], d["grupo_id"], d["estado"], user_id))
+            if d["password"]:
+                cursor.execute("UPDATE usuarios SET password_hash = ? WHERE id = ?", (hash_password(d["password"]), user_id))
             conn.commit()
         except sqlite3.IntegrityError as e:
             conn.rollback()
             raise HTTPException(status_code=400, detail=f"No se pudo actualizar el usuario: {e}")
-        return {"success": True, "message": "Usuario actualizado."}
+        # Nueva contraseña, baja o cambio de tipo: se cierran sus sesiones abiertas
+        if d["password"] or d["estado"] != actual["estado"] or d["tipo"] != actual["tipo"]:
+            destroy_sessions_for(actual["tipo"], user_id)
+        return {"success": True, "message": "Usuario actualizado." + (" Contraseña cambiada." if d["password"] else "")}
     finally:
         conn.close()
 

@@ -395,7 +395,7 @@ function refreshActiveSection() {
   else if (STATE.currentSection === "teachers") loadTeachersData();
   else if (STATE.currentSection === "reports") loadReportsDropdowns();
   else if (STATE.currentSection === "periodos") loadPeriodosData();
-  else if (STATE.currentSection === "admins") { loadAdminsData(); loadJefesData(); }
+  else if (STATE.currentSection === "admins") { loadAdminsData(); loadJefesData(); loadCuentasData(); }
 }
 
 // -------------------------------------------------------------

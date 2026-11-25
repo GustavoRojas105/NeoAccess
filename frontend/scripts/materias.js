@@ -6,7 +6,7 @@
 // ─────────────────────────────────────────────────────────────
 let MATERIAS_ITSOEH = {};
 
-const MATERIAS_LISTAS = fetch("/scripts/materias_itsoeh.json?v=20261124_10")
+const MATERIAS_LISTAS = fetch("/scripts/materias_itsoeh.json?v=20261125_1")
   .then(r => r.json())
   .then(data => {
     MATERIAS_ITSOEH = Object.fromEntries(Object.entries(data.carreras).map(([carrera, porSemestre]) => [

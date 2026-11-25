@@ -218,6 +218,49 @@ class TestDocentesJefe(Base):
         self.assertEqual(tipos, {"docente"})
 
 
+# ──────────────── Cuentas de portal (apartados de Administradores) ────────────────
+class TestCuentasPortal(Base):
+    def flag(self, uid, tipo):
+        return [x for x in C.get(f"/api/users?tipo={tipo}", headers=self.A).json() if x["id"] == uid][0]
+
+    def test_alta_con_contrasena_y_login(self):
+        lim = {"id": "LIM-T1", "nombre_completo": "Magda Prueba", "matricula_clave": "LIM-T1",
+               "tipo": "personal_limpieza", "carrera": None, "grupo_id": None, "estado": "activo"}
+        self.assertEqual(C.post("/api/users", headers=self.A, json={**lim, "password": "corta"}).status_code, 400)  # límite: 7 < 8
+        self.assertEqual(C.post("/api/users", headers=self.A, json={**lim, "password": "limpia2026"}).status_code, 200)
+        u = self.flag("LIM-T1", "personal_limpieza")
+        self.assertTrue(u["tiene_password"])
+        self.assertNotIn("password_hash", u)                                              # nunca se expone el hash
+        self.assertTrue(entrar("LIM-T1", "limpia2026"))
+        # Sin contraseña: se crea, pero no puede entrar
+        self.assertEqual(C.post("/api/users", headers=self.A, json={**lim, "id": "LIM-T2", "matricula_clave": "LIM-T2"}).status_code, 200)
+        self.assertFalse(self.flag("LIM-T2", "personal_limpieza")["tiene_password"])
+
+    def test_editar_datos_y_contrasena(self):
+        al = {"id": "AL-CTA", "nombre_completo": "Alumno Cuenta", "matricula_clave": "22039999", "tipo": "alumno",
+              "carrera": ISC, "grupo_id": "ISC-501", "estado": "activo", "password": "primera123"}
+        self.assertEqual(C.post("/api/users", headers=self.A, json=al).status_code, 200)
+        H = entrar("22039999", "primera123")
+        self.assertTrue(H)
+        # Editar sin contraseña: conserva la actual
+        self.assertEqual(C.put("/api/users/AL-CTA", headers=self.A, json={**al, "nombre_completo": "Alumno Editado", "password": None}).status_code, 200)
+        self.assertEqual(self.flag("AL-CTA", "alumno")["nombre_completo"], "Alumno Editado")
+        self.assertTrue(entrar("22039999", "primera123"))
+        # Cambiar contraseña: la vieja ya no sirve y la sesión abierta se cierra
+        self.assertEqual(C.put("/api/users/AL-CTA", headers=self.A, json={**al, "password": "segunda123"}).status_code, 200)
+        self.assertEqual(C.get("/api/portal/student-data", headers=H).status_code, 401)
+        limpiar_intentos()
+        self.assertEqual(C.post("/api/auth/login", json={"username": "22039999", "password": "primera123"}).status_code, 401)
+        self.assertTrue(entrar("22039999", "segunda123"))
+        self.assertEqual(C.put("/api/users/AL-CTA", headers=self.A, json={**al, "password": "corta"}).status_code, 400)
+
+    def test_solo_admin_edita(self):
+        d = {"id": "DOC-ISC", "nombre_completo": "Laura Pérez", "matricula_clave": "D-100", "tipo": "docente",
+             "carrera": ISC, "grupo_id": None, "estado": "activo", "password": "hackeo1234"}
+        self.assertEqual(C.put("/api/users/DOC-ISC", headers=self.J, json=d).status_code, 403)
+        self.assertEqual(C.put("/api/users/DOC-ISC", headers=self.DO, json=d).status_code, 403)
+
+
 # ───────────────────────── Horarios: límites ─────────────────────────
 class TestHorarios(Base):
     def horario(self, ini, fin, dia="Viernes", lab="LAB-RED", H=None, **extra):

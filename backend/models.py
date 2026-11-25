@@ -91,6 +91,8 @@ class UserCreate(BaseModel):
     carrera: Optional[str] = None
     grupo_id: Optional[str] = None
     estado: Optional[str] = "activo"
+    # Contraseña de portal (opcional). Vacía = no se asigna / no se cambia.
+    password: Optional[str] = Field(None, max_length=128)
 
 class FacialMetadataCreate(BaseModel):
     usuario_id: str
