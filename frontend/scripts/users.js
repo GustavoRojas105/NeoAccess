@@ -640,11 +640,7 @@ function renderPersonalLimpieza(personal) {
 
 // ─────────────── Agregar docente o personal de limpieza ───────────────
 document.addEventListener("DOMContentLoaded", () => {
-  const selCarrera = document.getElementById("staff-new-career");
-  if (selCarrera && typeof MATERIAS_ITSOEH !== "undefined") {
-    selCarrera.innerHTML = `<option value="">Sin carrera (área administrativa)</option>` +
-      Object.keys(MATERIAS_ITSOEH).map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
-  }
+  fillCareerSelect(document.getElementById("staff-new-career"), "Sin carrera (área administrativa)");
 
   document.getElementById("btn-modal-add-staff")?.addEventListener("click", () => {
     document.getElementById("form-add-staff")?.reset();

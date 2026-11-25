@@ -1,0 +1,143 @@
+{
+  "_fuente": "https://www.itsoeh.edu.mx/front/services.html (consultada 24/11/2026). Clave \"0\" = asignaturas publicadas sin semestre (PILA2021); Ingeniería Civil: retícula ICIV-2010-208.",
+  "carreras": {
+    "Ingeniería Civil": {
+      "1": [
+        "Fundamentos de Investigación",
+        "Cálculo Diferencial",
+        "Taller de Ética",
+        "Química",
+        "Software en Ingeniería Civil",
+        "Dibujo en Ingeniería Civil"
+      ],
+      "2": [
+        "Probabilidad y Estadística",
+        "Cálculo Integral",
+        "Estática",
+        "Geología",
+        "Topografía",
+        "Métodos Numéricos"
+      ],
+      "3": [
+        "Álgebra Lineal",
+        "Cálculo Vectorial",
+        "Dinámica",
+        "Mecánica de Suelos",
+        "Modelos de Optimización de Recursos",
+        "Materiales y Procesos Constructivos"
+      ],
+      "4": [
+        "Hidráulica Básica",
+        "Ecuaciones Diferenciales",
+        "Fundamentos de la Mecánica de los Medios Continuos",
+        "Mecánica de Suelos Aplicada",
+        "Tecnología del Concreto",
+        "Costos y Presupuestos"
+      ],
+      "5": [
+        "Hidrología Superficial",
+        "Maquinaria Pesada y Movimiento de Tierra",
+        "Mecánica de Materiales",
+        "Carreteras",
+        "Sistemas de Transporte",
+        "Administración de la Construcción",
+        "Desarrollo Sustentable"
+      ],
+      "6": [
+        "Hidráulica de Canales",
+        "Taller de Investigación I",
+        "Análisis Estructural",
+        "Diseño y Construcción de Pavimentos",
+        "Instalaciones en los Edificios"
+      ],
+      "7": [
+        "Abastecimiento de Agua",
+        "Taller de Investigación II",
+        "Análisis Estructural Avanzado",
+        "Diseño de Elementos de Concreto Reforzado"
+      ],
+      "8": [
+        "Alcantarillado",
+        "Formulación y Evaluación de Proyectos",
+        "Diseño de Elementos de Acero",
+        "Diseño Estructural de Cimentaciones"
+      ]
+    },
+    "Ingeniería Industrial": {
+      "0": [
+        "Administración de Operaciones I",
+        "Control Estadístico de la Calidad",
+        "Ergonomía",
+        "Gestión de los Sistemas de Calidad",
+        "Investigación de Operaciones II",
+        "Logística y Cadena de Suministro",
+        "Planeación Financiera",
+        "Planeación y Diseño de Instalaciones"
+      ]
+    },
+    "Ingeniería en Industrias Alimentarias": {
+      "0": [
+        "Biología",
+        "Calidad e Inocuidad Alimentaria",
+        "Taller de Investigación I"
+      ]
+    },
+    "Ingeniería en Electromecánica": {
+      "0": [
+        "Análisis de Circuitos de CA",
+        "Sistemas y Máquinas de Fluidos",
+        "Taller de Investigación II"
+      ]
+    },
+    "Ingeniería en Sistemas Computacionales": {
+      "0": [
+        "Conmutación y Enrutamiento en Redes de Datos",
+        "Lenguajes y Autómatas II",
+        "Matemáticas Discretas",
+        "Programación Web",
+        "Sistemas Operativos I"
+      ]
+    },
+    "Ingeniería en Gestión Empresarial": {
+      "0": [
+        "Calidad Aplicada a la Gestión Empresarial",
+        "El Emprendedor y la Innovación",
+        "Ingeniería de Procesos",
+        "Mercadotecnia",
+        "Mercadotecnia Electrónica"
+      ]
+    },
+    "Arquitectura": {
+      "0": [
+        "Administración de Empresas Constructoras II",
+        "Administración de la Construcción II",
+        "Análisis Crítico de la Arquitectura y el Arte I",
+        "Análisis Crítico de la Arquitectura y el Arte III",
+        "Estructuras I",
+        "Estructuras de Concreto",
+        "Taller de Diseño I",
+        "Taller de Diseño III",
+        "Taller de Diseño V",
+        "Taller de Investigación I",
+        "Urbanismo I"
+      ]
+    },
+    "Ingeniería en Tecnologías de la Información y Comunicaciones": {
+      "0": [
+        "Interacción Humano Computadora",
+        "Negocios Electrónicos I",
+        "Redes de Computadoras",
+        "Sistemas Operativos I"
+      ]
+    },
+    "Ingeniería en Logística": {
+      "0": [
+        "Administración de Flotillas de Transporte",
+        "Centros de Distribución",
+        "Logística de Flujos Internacionales",
+        "Operación y Control de Transporte de Carga Terrestre",
+        "Taller de Habilidades Directivas"
+      ]
+    }
+  }
+}

@@ -17,6 +17,7 @@ NeoAccess/
 │   ├── app.py                     # Endpoints del Dashboard, IoT, registro facial y comandos remotos
 │   ├── auth.py                    # PBKDF2-SHA256 (600k iteraciones), sesiones y límite de intentos
 │   ├── mailer.py                  # Envío de correos de verificación (SMTP); prueba: python backend\mailer.py
+│   ├── horarios_import.py         # Plantilla de Excel, validación e importación de horarios
 │   └── models.py                  # Modelos Pydantic de validación
 │
 ├── database/                      # Base de datos SQLite
@@ -30,7 +31,8 @@ NeoAccess/
 │   ├── styles/style.css
 │   └── scripts/                   # app.js, laboratories.js, devices.js, metrics.js,
 │                                  # schedules.js, users.js (captura facial), reports.js,
-│                                  # admins.js, dialogs.js, materias.js, eliminar.js
+│                                  # admins.js, dialogs.js, materias.js, eliminar.js,
+│                                  # importar_horarios.js, materias_itsoeh.json
 │
 ├── raspberry_pi/                  # Paquete para la Raspberry Pi Zero W de cada puerta
 │   ├── rpi_main.py                # Nodo de puerta: cámara + reconocimiento + relé GPIO 17
@@ -144,6 +146,16 @@ Desde el Dashboard → menú lateral → **Administradores**:
 - **Agregar administrador:** nombre, usuario, correo (opcional) y contraseña de mínimo 8 caracteres. El usuario no puede repetirse ni coincidir con la matrícula o clave de un alumno o docente.
 - **Desactivar / Reactivar:** un administrador desactivado sale del sistema de inmediato. Nadie puede desactivarse a sí mismo y siempre debe quedar al menos uno activo.
 - **Cambiar mi contraseña:** pide la contraseña actual y cierra las demás sesiones abiertas de esa cuenta.
+
+## 📅 Importar Horarios desde Excel
+
+En **Horarios y Grupos**:
+
+1. **Descargar plantilla** → Excel con listas desplegables de tus laboratorios, grupos, docentes, días, horas y las materias oficiales del ITSOEH.
+2. Llena una fila por clase y guárdalo (también se acepta `.csv`).
+3. **Importar horarios** → se revisa fila por fila y se marca qué está bien y qué tiene error (día u hora inválidos, laboratorio/grupo/docente inexistente, materia que no es de la carrera del grupo, o choques de laboratorio, grupo o docente). Solo se guardan las filas válidas cuando confirmas.
+
+También puedes **Agregar uno** a la vez; usa las mismas validaciones. El catálogo de materias está en `frontend/scripts/materias_itsoeh.json`.
 
 ## 🗑️ Dar de baja vs. Eliminar definitivamente
 

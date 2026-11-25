@@ -19,13 +19,14 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-from fastapi import FastAPI, HTTPException, Header, Depends, Query, Response, Request
+from fastapi import FastAPI, HTTPException, Header, Depends, Query, Response, Request, UploadFile, File
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from database.database import get_connection, init_db
 from backend.mailer import send_email
+from backend.horarios_import import validar_horario, leer_archivo, generar_plantilla, cargar_materias
 from backend.auth import (
     hash_password, verify_password, needs_rehash, create_session,
     validate_session, destroy_session, destroy_sessions_for, generate_device_token,
@@ -1423,17 +1424,97 @@ def get_schedules(
     conn.close()
     return rows
 
+_SQL_INSERT_HORARIO = """
+INSERT INTO horarios (grupo_id, laboratorio_id, docente_id, materia, dia_semana, hora_inicio, hora_fin)
+VALUES (:grupo_id, :laboratorio_id, :docente_id, :materia, :dia_semana, :hora_inicio, :hora_fin);
+"""
+
 @app.post("/api/schedules")
 def create_schedule(payload: ScheduleCreate, admin: dict = Depends(get_current_admin)):
     conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-    INSERT INTO horarios (grupo_id, laboratorio_id, docente_id, materia, dia_semana, hora_inicio, hora_fin)
-    VALUES (?, ?, ?, ?, ?, ?, ?);
-    """, (payload.grupo_id, payload.laboratorio_id, payload.docente_id, payload.materia, payload.dia_semana, payload.hora_inicio, payload.hora_fin))
-    conn.commit()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        horario, errores = validar_horario({
+            "dia": payload.dia_semana, "hora_inicio": payload.hora_inicio, "hora_fin": payload.hora_fin,
+            "laboratorio": payload.laboratorio_id, "grupo": payload.grupo_id,
+            "docente": payload.docente_id, "materia": payload.materia,
+        }, cursor, [])
+        if errores:
+            raise HTTPException(status_code=400, detail=" ".join(errores))
+        cursor.execute(_SQL_INSERT_HORARIO, horario)
+        conn.commit()
+    finally:
+        conn.close()
     return {"success": True, "message": "Horario registrado correctamente."}
+
+@app.get("/api/schedules/template")
+def schedules_template(admin: dict = Depends(get_current_admin)):
+    """Plantilla de Excel con listas desplegables de los datos reales del sistema."""
+    conn = get_connection()
+    try:
+        contenido = generar_plantilla(conn.cursor())
+    finally:
+        conn.close()
+    return Response(
+        content=contenido,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="plantilla_horarios_neoaccess.xlsx"'},
+    )
+
+MAX_IMPORT_BYTES = 2 * 1024 * 1024
+
+@app.post("/api/schedules/import")
+async def import_schedules(
+    archivo: UploadFile = File(...),
+    confirmar: bool = Query(False),
+    admin: dict = Depends(get_current_admin),
+):
+    """
+    confirmar=false: solo revisa y devuelve el resultado fila por fila.
+    confirmar=true:  guarda las filas válidas (las que tienen error se omiten).
+    """
+    contenido = await archivo.read(MAX_IMPORT_BYTES + 1)
+    if len(contenido) > MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=400, detail="El archivo es demasiado grande (máximo 2 MB).")
+    filas, error = leer_archivo(archivo.filename, contenido)
+    if error:
+        raise HTTPException(status_code=400, detail=error)
+    if not filas:
+        raise HTTPException(status_code=400, detail="El archivo no tiene horarios: llene al menos una fila debajo de los encabezados.")
+    if len(filas) > 1000:
+        raise HTTPException(status_code=400, detail="Máximo 1000 horarios por archivo.")
+
+    materias = cargar_materias()
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        resultado, ocupados, validos = [], [], []
+        for f in filas:
+            horario, errores = validar_horario(f, cursor, ocupados, materias)
+            if horario:
+                ocupados.append((horario["laboratorio_id"], horario["dia_semana"], horario["hora_inicio"],
+                                 horario["hora_fin"], horario["grupo_id"], horario["docente_id"]))
+                validos.append(horario)
+            resultado.append({
+                "fila": f["fila"],
+                "datos": {k: ("" if v is None else str(v)) for k, v in f.items() if k != "fila"},
+                "horario": horario,
+                "errores": errores,
+            })
+        guardados = 0
+        if confirmar and validos:
+            cursor.executemany(_SQL_INSERT_HORARIO, validos)
+            conn.commit()
+            guardados = len(validos)
+    finally:
+        conn.close()
+    return {
+        "total": len(resultado),
+        "validas": len(validos),
+        "con_error": len(resultado) - len(validos),
+        "guardados": guardados,
+        "filas": resultado,
+    }
 
 @app.delete("/api/schedules/{schedule_id}")
 def delete_schedule(schedule_id: int, admin: dict = Depends(get_current_admin)):

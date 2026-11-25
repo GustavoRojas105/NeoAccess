@@ -9,7 +9,7 @@ echo.
 cd /d "%~dp0"
 
 echo Verificando dependencias de Python...
-python -c "import fastapi, uvicorn, cv2, numpy" 2>nul
+python -c "import fastapi, uvicorn, cv2, numpy, openpyxl" 2>nul
 if %errorlevel% neq 0 (
     echo Instalando librerias requeridas...
     python -m pip install -r requirements.txt

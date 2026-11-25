@@ -78,6 +78,23 @@ async function loadScheduleFormOptions() {
     selGrupo.innerHTML = `<option value="">No se pudieron cargar los grupos</option>`;
   }
   fillSubjectSelect(selMateria, null, null);
+
+  try {
+    const labs = await apiFetch("/api/labs");   // por si se agregaron laboratorios hace un momento
+    STATE.laboratorios = labs;
+    populateLabDropdowns(labs);
+  } catch (err) { /* se conserva la lista anterior */ }
+
+  const selDocente = document.getElementById("schedule-new-teacher");
+  try {
+    const docentes = (await apiFetch("/api/users?tipo=docente")).filter(d => d.estado === "activo");
+    selDocente.innerHTML = docentes.length
+      ? `<option value="">Seleccione un docente...</option>` + docentes.map(d =>
+          `<option value="${esc(d.id)}">${esc(d.nombre_completo)} (${esc(d.matricula_clave)})</option>`).join("")
+      : `<option value="">No hay docentes: regístrelos en Maestros y Personal</option>`;
+  } catch (err) {
+    selDocente.innerHTML = `<option value="">No se pudieron cargar los docentes</option>`;
+  }
 }
 
 async function deleteSchedule(scheduleId) {
@@ -169,11 +186,7 @@ async function deleteGroup(groupId, nombre) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  const selCarrera = document.getElementById("group-new-career");
-  if (selCarrera && typeof MATERIAS_ITSOEH !== "undefined") {
-    selCarrera.innerHTML = `<option value="">Seleccione una carrera...</option>` +
-      Object.keys(MATERIAS_ITSOEH).map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
-  }
+  fillCareerSelect(document.getElementById("group-new-career"), "Seleccione una carrera...");
   document.getElementById("btn-modal-add-group")?.addEventListener("click", () => {
     document.getElementById("form-add-group")?.reset();
     openModal("modal-add-group");
