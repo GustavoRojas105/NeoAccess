@@ -54,6 +54,8 @@ NeoAccess/
 │   ├── fotos_credenciales/        # Fotos de entrada (no se suben a Git)
 │   └── README_PKL.md
 │
+├── tests/                         # Pruebas de caja blanca, negra y gris (python tests\ejecutar_pruebas.py)
+│                                  # y REPORTE_PRUEBAS.md con los resultados
 ├── docs/                          # ARQUITECTURA.md, GUIA_INSTALACION.md, CONECTAR_RPI_ZERO.md
 ├── requirements.txt               # Dependencias del servidor
 ├── run_server.bat                 # Instala dependencias, prepara la BD y abre el Dashboard

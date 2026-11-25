@@ -1665,6 +1665,9 @@ def create_admin(payload: AdminCreate, admin: dict = Depends(get_current_admin))
         cur.execute("SELECT 1 FROM administradores WHERE lower(username) = ?", (username,))
         if cur.fetchone():
             raise HTTPException(status_code=400, detail=f"Ya existe un administrador con el usuario '{username}'.")
+        cur.execute("SELECT 1 FROM jefes_carrera WHERE lower(username) = ?", (username,))
+        if cur.fetchone():
+            raise HTTPException(status_code=400, detail=f"El usuario '{username}' ya lo usa un jefe de carrera.")
         # Evita que el usuario choque con la matrícula/clave de un alumno o docente al iniciar sesión
         cur.execute("SELECT 1 FROM usuarios WHERE lower(matricula_clave) = ? OR lower(id) = ?", (username, username))
         if cur.fetchone():

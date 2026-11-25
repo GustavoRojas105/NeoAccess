@@ -42,3 +42,8 @@ prueba_acceso/prueba_acceso.db
 
 # Respaldos locales de la base de datos (contienen hashes de contraseñas)
 database/respaldos/
+
+# Pruebas
+tests/.coverage*
+htmlcov/
+__pycache__/

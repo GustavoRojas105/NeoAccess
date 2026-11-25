@@ -56,10 +56,16 @@ def _hora(valor):
         valor = valor.time()
     if isinstance(valor, dtime):
         return f"{valor.hour:02d}:{valor.minute:02d}"
-    if isinstance(valor, (int, float)) and 0 <= valor < 1:
+    if isinstance(valor, (int, float)) and not isinstance(valor, bool):
+        if not 0 <= valor < 1:
+            return None  # un número de Excel fuera de 0..1 no es una hora del día
         minutos = round(valor * 24 * 60)
         return f"{minutos // 60:02d}:{minutos % 60:02d}"
-    t = _norm(valor).replace(".", "").replace(" ", "")
+    # "7:30 p.m." -> "7:30pm"; "7.30" -> "7:30" (el punto como separador de hora)
+    t = _norm(valor).replace(" ", "")
+    for largo, corto in (("a.m.", "am"), ("p.m.", "pm"), ("a.m", "am"), ("p.m", "pm")):
+        t = t.replace(largo, corto)
+    t = t.replace(".", ":")
     m = re.fullmatch(r"(\d{1,2})(?::(\d{2}))?(?::\d{2})?(am|pm)?", t)
     if not m:
         return None
