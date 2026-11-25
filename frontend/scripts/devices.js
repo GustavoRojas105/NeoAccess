@@ -130,28 +130,39 @@ function showConnectRpiModal(deviceId) {
   document.getElementById("modal-rpi-token").textContent = dev.token_api;
 
   RPI_MODAL_ID = dev.id;
+  document.getElementById("modal-rpi-cmd").textContent =
+    `unzip neoaccess_${dev.id}.zip
+bash neoaccess/setup_rpi.sh`;
   openModal("modal-connect-rpi");
 }
 
 let RPI_MODAL_ID = null;
 
-async function descargarConfigRpi() {
+async function descargarArchivoRpi(ruta, nombre, queEs) {
   if (!RPI_MODAL_ID) return;
   try {
-    const res = await fetch(`/api/devices/${encodeURIComponent(RPI_MODAL_ID)}/config-file`,
+    const res = await fetch(`/api/devices/${encodeURIComponent(RPI_MODAL_ID)}/${ruta}`,
       { headers: { Authorization: `Bearer ${STATE.token}` } });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
     const url = URL.createObjectURL(await res.blob());
     const a = document.createElement("a");
     a.href = url;
-    a.download = `config_${RPI_MODAL_ID}.json`;
+    a.download = nombre;
     document.body.appendChild(a);
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   } catch (err) {
-    showAlert("No se pudo descargar el config.json: " + err.message, { type: "error" });
+    showAlert(`No se pudo descargar ${queEs}: ` + err.message, { type: "error" });
   }
+}
+
+function descargarConfigRpi() {
+  return descargarArchivoRpi("config-file", "config.json", "el config.json");
+}
+
+function descargarPaqueteRpi() {
+  return descargarArchivoRpi("rpi-package", `neoaccess_${RPI_MODAL_ID}.zip`, "el paquete");
 }
 
 async function regenerarTokenRpi() {

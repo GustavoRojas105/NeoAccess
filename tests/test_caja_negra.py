@@ -274,6 +274,23 @@ class TestTokenDispositivo(Base):
         self.assertEqual(latido(nuevo), 200)
         self.assertIn(nuevo, C.get("/api/devices/RPI-TOK/config-file", headers=self.A).text)
 
+    def test_paquete_zip_para_raspberry(self):
+        import json, zipfile
+        tok = sembrar()["token_rpi"]
+        self.assertEqual(C.get("/api/devices/RPI-RED/rpi-package", headers=self.J).status_code, 403)
+        self.assertEqual(C.get("/api/devices/NO-EXISTE/rpi-package", headers=self.A).status_code, 404)
+        r = C.get("/api/devices/RPI-RED/rpi-package", headers=self.A)
+        self.assertEqual(r.status_code, 200)
+        z = zipfile.ZipFile(io.BytesIO(r.content))
+        nombres = z.namelist()
+        for f in ("rpi_main.py", "face_engine.py", "setup_rpi.sh", "config.json"):
+            self.assertIn(f"neoaccess/{f}", nombres)
+        self.assertFalse(any("simulator" in n or "cache_offline" in n or "cola_" in n for n in nombres))
+        cfg = json.loads(z.read("neoaccess/config.json"))
+        self.assertEqual((cfg["dispositivo_id"], cfg["token_api"]), ("RPI-RED", tok))
+        self.assertNotIn(b"\r\n", z.read("neoaccess/setup_rpi.sh"))              # bash en Linux
+        self.assertTrue((z.getinfo("neoaccess/setup_rpi.sh").external_attr >> 16) & 0o111)  # ejecutable
+
 
 # ───────────────────────── Horarios: límites ─────────────────────────
 class TestHorarios(Base):

@@ -408,6 +408,47 @@ class TestRaspberry(unittest.TestCase):
 
 # ───────────────────────── Portal (JavaScript): hpEstadoClase ─────────────────────────
 @unittest.skipUnless(shutil.which("node"), "Node.js no está instalado")
+def _cargar_recarga_config():
+    """Extrae reload_config_if_changed y _mtime de rpi_main (sin importar cámara/GPIO)."""
+    src = io.open(os.path.join(RAIZ, "raspberry_pi", "rpi_main.py"), encoding="utf-8").read()
+    arbol = ast.parse(src)
+    fns = [n for c in arbol.body if isinstance(c, ast.ClassDef) for n in c.body
+           if isinstance(n, ast.FunctionDef) and n.name in ("reload_config_if_changed", "_mtime")]
+    for f in fns:
+        f.decorator_list = []
+    leer = lambda ruta, defecto: json.load(open(ruta, encoding="utf-8")) if os.path.exists(ruta) else defecto
+    ns = {"os": os, "_read_json": leer, "_importar_config_externo": lambda: None}
+    exec(compile(ast.Module(fns, []), "rpi_main.recarga", "exec"), ns)
+    return ns
+
+
+class TestRaspberryConfig(unittest.TestCase):
+    def test_recarga_config_sin_reiniciar(self):
+        import tempfile
+        ns = _cargar_recarga_config()
+        carpeta = tempfile.mkdtemp()
+        ruta = os.path.join(carpeta, "config.json")
+        cfg = {"dispositivo_id": "D1", "token_api": "viejo", "servidor_url": "http://1.1.1.1:8000/"}
+        json.dump(cfg, open(ruta, "w", encoding="utf-8"))
+        nodo = types.SimpleNamespace(config_path=ruta, server_url="http://1.1.1.1:8000", device_id="D1",
+                                     token_api="viejo", heartbeat_interval=300, online=True, config={})
+        nodo._mtime = lambda p: ns["_mtime"](p)
+        nodo._config_mtime = nodo._mtime(ruta)
+        recargar = lambda: ns["reload_config_if_changed"](nodo)
+        recargar()                                              # sin cambios: no toca nada
+        self.assertEqual(nodo.token_api, "viejo")
+        self.assertTrue(nodo.online)
+        json.dump({**cfg, "token_api": "nuevo", "servidor_url": "http://2.2.2.2:8000/"}, open(ruta, "w", encoding="utf-8"))
+        os.utime(ruta, (nodo._config_mtime + 5, nodo._config_mtime + 5))
+        recargar()                                              # archivo nuevo: aplica token e IP
+        self.assertEqual((nodo.token_api, nodo.server_url, nodo.online), ("nuevo", "http://2.2.2.2:8000", False))
+        json.dump({"token_api": ""}, open(ruta, "w", encoding="utf-8"))
+        os.utime(ruta, (nodo._config_mtime + 10, nodo._config_mtime + 10))
+        recargar()                                              # archivo sin token: se ignora
+        self.assertEqual(nodo.token_api, "nuevo")
+        shutil.rmtree(carpeta)
+
+
 class TestPortalJS(unittest.TestCase):
     def test_estado_de_la_clase_limites(self):
         ruta = os.path.join(RAIZ, "frontend", "scripts", "horario_portal.js").replace("\\", "/")

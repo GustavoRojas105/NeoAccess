@@ -1124,17 +1124,28 @@
         </div>
 
         <div class="space-y-2">
-          <p class="font-semibold text-slate-800">2. Descargar archivo de configuración automática:</p>
-          <button type="button" id="modal-rpi-download-btn" onclick="descargarConfigRpi()" class="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-800 text-white rounded-lg hover:bg-slate-900 text-xs">
-            <i data-lucide="download" class="w-3.5 h-3.5"></i>
-            <span>Descargar config.json para Raspberry Pi</span>
+          <p class="font-semibold text-slate-800">2. Descarga el paquete para esta puerta:</p>
+          <button type="button" onclick="descargarPaqueteRpi()" class="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-800 text-white rounded-lg hover:bg-slate-900 text-xs">
+            <i data-lucide="package" class="w-3.5 h-3.5"></i>
+            <span>Descargar paquete para Raspberry Pi (.zip)</span>
           </button>
-          <p class="text-[11px] text-slate-500">Renómbralo a <code>config.json</code> y guárdalo dentro de la carpeta <code>raspberry_pi/</code> en tu Raspberry Pi Zero W.</p>
+          <p class="text-[11px] text-slate-500">Trae el programa, los modelos de reconocimiento y el <code>config.json</code> de esta puerta ya listo.</p>
         </div>
 
         <div class="space-y-2">
-          <p class="font-semibold text-slate-800">3. Comprobar la conexión real ejecutando en la Raspberry Pi:</p>
-          <pre class="bg-slate-900 text-slate-200 p-3 rounded-lg text-[11px] overflow-x-auto font-mono">python3 test_conexion.py</pre>
+          <p class="font-semibold text-slate-800">3. Cópialo a la Raspberry Pi y ejecuta una sola vez:</p>
+          <pre id="modal-rpi-cmd" class="bg-slate-900 text-slate-200 p-3 rounded-lg text-[11px] overflow-x-auto font-mono">unzip neoaccess_ID.zip
+bash neoaccess/setup_rpi.sh</pre>
+          <p class="text-[11px] text-slate-500">Listo: la puerta arranca sola cada vez que se enciende y busca este servidor cada 15 s hasta encontrarlo. Aquí la tarjeta se pondrá en verde.</p>
+        </div>
+
+        <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1.5">
+          <p class="font-semibold text-slate-800">¿Cambiaste el token o la IP de esta PC?</p>
+          <p class="text-[11px] text-slate-600">Descarga solo el config.json y reemplaza <code>neoaccess/config.json</code> (o cópialo a la partición <em>boot</em> de la SD como <code>neoaccess_config.json</code>). La Raspberry lo detecta sola, sin reiniciar.</p>
+          <button type="button" id="modal-rpi-download-btn" onclick="descargarConfigRpi()" class="inline-flex items-center gap-2 px-2.5 py-1 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-100 text-[11px]">
+            <i data-lucide="download" class="w-3.5 h-3.5"></i>
+            <span>Descargar solo config.json</span>
+          </button>
         </div>
 
         <div class="bg-amber-50 border border-amber-200 p-3 rounded-lg text-amber-800 text-[11px]">
@@ -1719,7 +1730,7 @@
   <script src="/scripts/app.js?v=20261125_2"></script>
   <script src="/scripts/laboratories.js?v=20261124_11"></script>
   <script src="/scripts/metrics.js?v=20261124_11"></script>
-  <script src="/scripts/devices.js?v=20261125_2"></script>
+  <script src="/scripts/devices.js?v=20261125_3"></script>
   <script src="/scripts/schedules.js?v=20261125_1"></script>
   <script src="/scripts/users.js?v=20261124_11"></script>
   <script src="/scripts/reports.js?v=20261124_11"></script>

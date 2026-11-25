@@ -47,6 +47,47 @@ QUEUE_FILE = os.path.join(BASE_DIR, "cola_offline.json")
 CLEANING_QUEUE_FILE = os.path.join(BASE_DIR, "cola_limpieza.json")
 CLEANING_STATE_FILE = os.path.join(BASE_DIR, "limpieza_estado.json")
 
+# Otras ubicaciones donde se puede dejar el config.json descargado del panel.
+# La partición "boot" de la tarjeta SD se ve desde Windows: basta con copiar ahí el archivo.
+CONFIG_EXTRA = [
+    "/boot/firmware/neoaccess_config.json", "/boot/neoaccess_config.json",
+    "/boot/firmware/config.json.neoaccess", "/boot/config.json.neoaccess",
+]
+RETRY_OFFLINE_SEG = 15  # mientras no haya servidor, reintentar seguido
+
+
+def _importar_config_externo():
+    """Si hay un config en la partición boot (o uno distinto al local), copiarlo a config.json."""
+    for ruta in CONFIG_EXTRA:
+        try:
+            if not os.path.isfile(ruta):
+                continue
+            nuevo = _read_json(ruta, None)
+            if not isinstance(nuevo, dict) or not nuevo.get("token_api"):
+                continue
+            if _read_json(CONFIG_PATH, None) != nuevo:
+                _write_json_atomic(CONFIG_PATH, nuevo)
+                print(f"[CONFIG] Configuración importada desde {ruta}.")
+            return
+        except Exception as e:
+            print(f"[CONFIG] No se pudo leer {ruta}: {e}")
+
+
+def esperar_config(path: str = CONFIG_PATH) -> None:
+    """Bloquea hasta que exista un config.json con token (copiado a mano o en la partición boot)."""
+    avisado = False
+    while True:
+        _importar_config_externo()
+        cfg = _read_json(path, None)
+        if isinstance(cfg, dict) and cfg.get("token_api") and cfg.get("servidor_url"):
+            return
+        if not avisado:
+            print("[CONFIG] Falta config.json. Descárgalo del panel (Dispositivos > Vincular) y")
+            print(f"         cópialo a {path} o a la partición boot como neoaccess_config.json.")
+            print("         Revisando cada 10 segundos...")
+            avisado = True
+        time.sleep(10)
+
 
 def _read_json(path: str, default):
     if os.path.exists(path):
@@ -109,7 +150,10 @@ class Camera:
 
 class NeoAccessRaspberryNode:
     def __init__(self, config_path: str = CONFIG_PATH):
+        self.config_path = config_path
         self.config = self.load_config(config_path)
+        self._config_mtime = self._mtime(config_path)
+        self.online = False
         self.server_url = self.config.get("servidor_url", "http://127.0.0.1:8000").rstrip("/")
         self.device_id = self.config.get("dispositivo_id", "DEV-PI-STEM01")
         self.token_api = self.config.get("token_api", "")
@@ -152,6 +196,31 @@ class NeoAccessRaspberryNode:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
 
+    @staticmethod
+    def _mtime(path: str):
+        try:
+            return os.path.getmtime(path)
+        except OSError:
+            return None
+
+    def reload_config_if_changed(self):
+        """Si se reemplazó el config.json (p. ej. token regenerado), aplicarlo sin reiniciar."""
+        _importar_config_externo()
+        mtime = self._mtime(self.config_path)
+        if mtime is None or mtime == self._config_mtime:
+            return
+        self._config_mtime = mtime
+        cfg = _read_json(self.config_path, None)
+        if not isinstance(cfg, dict) or not cfg.get("token_api"):
+            return
+        self.config = cfg
+        self.server_url = cfg.get("servidor_url", self.server_url).rstrip("/")
+        self.device_id = cfg.get("dispositivo_id", self.device_id)
+        self.token_api = cfg.get("token_api", self.token_api)
+        self.heartbeat_interval = cfg.get("intervalo_latido_seg", self.heartbeat_interval)
+        self.online = False
+        print(f"[CONFIG] config.json actualizado: {self.device_id} -> {self.server_url}")
+
     def setup_gpio(self):
         """Configuración física de pines GPIO de la Raspberry Pi Zero W."""
         if HARDWARE_GPIO_AVAILABLE:
@@ -192,14 +261,25 @@ class NeoAccessRaspberryNode:
     def _heartbeat_loop(self):
         print(f"[LATIDO] Servicio de señal periódica activo (cada {self.heartbeat_interval} seg)...")
         while self.running:
+            self.reload_config_if_changed()
             try:
-                self.send_heartbeat()
-                self.sync_offline_rules()
-                self.flush_offline_queue()
-                self.flush_cleaning_queue()
+                if self.send_heartbeat():
+                    self.sync_offline_rules()
+                    self.flush_offline_queue()
+                    self.flush_cleaning_queue()
             except Exception as e:
-                print(f"[ALERTA RED] Servidor central no accesible: {e}")
-            time.sleep(self.heartbeat_interval)
+                if self.online:
+                    print(f"[ALERTA RED] Se perdió la conexión con el servidor: {e}")
+                else:
+                    print(f"[BUSCANDO SERVIDOR] {self.server_url} no responde; reintento en {RETRY_OFFLINE_SEG} s.")
+                self.online = False
+            espera = self.heartbeat_interval if self.online else RETRY_OFFLINE_SEG
+            # dormir en pasos cortos para notar pronto un config.json nuevo
+            fin = time.time() + espera
+            while self.running and time.time() < fin:
+                time.sleep(1)
+                if self._mtime(self.config_path) != self._config_mtime:
+                    break
 
     def send_heartbeat(self):
         """Envía señal de 'sigo en línea' al servidor (RF-10)."""
@@ -210,7 +290,18 @@ class NeoAccessRaspberryNode:
         }
         res = requests.post(f"{self.server_url}/api/iot/heartbeat", json=payload, timeout=5)
         if res.status_code == 200:
+            if not self.online:
+                print(f"[CONECTADO] Servidor {self.server_url} encontrado. Puerta en línea.")
+            self.online = True
             print(f"[LATIDO OK] Señal de vida confirmada por servidor a las {datetime.now().strftime('%H:%M:%S')}")
+            return True
+        self.online = False
+        if res.status_code in (401, 403):
+            print("[TOKEN RECHAZADO] El servidor no reconoce este token (¿se regeneró o se desactivó la puerta?).")
+            print("                  Descarga de nuevo el config.json del panel y reemplázalo.")
+        else:
+            print(f"[LATIDO] Respuesta inesperada del servidor: {res.status_code}")
+        return False
 
     def sync_offline_rules(self):
         """Descarga listas de horarios y vectores faciales para operar sin internet (RF-08)."""
@@ -537,15 +628,10 @@ if __name__ == "__main__":
     print("=" * 65)
     print(" NeoAccess • Nodo de Puerta Raspberry Pi Zero W (Modo Producción)")
     print("=" * 65)
+    esperar_config()
     node = NeoAccessRaspberryNode()
 
-    # Sincronización inicial
-    try:
-        node.send_heartbeat()
-        node.sync_offline_rules()
-    except Exception as e:
-        print(f"[AVISO] Servidor no alcanzable en el arranque: {e}")
-
+    # El hilo de latido busca el servidor solo (cada 15 s mientras no responda)
     node.start_heartbeat_thread()
     node.start_command_thread()
 

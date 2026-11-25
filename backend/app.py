@@ -1188,8 +1188,7 @@ def _server_url_for_devices(request: Request) -> str:
     except Exception:
         return f"http://127.0.0.1:{port}"
 
-@app.get("/api/devices/{device_id}/config-file")
-def download_device_config(device_id: str, request: Request, admin: dict = Depends(get_current_admin)):
+def _device_config(device_id: str, request: Request) -> dict:
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM dispositivos WHERE id = ?", (device_id,))
@@ -1197,8 +1196,7 @@ def download_device_config(device_id: str, request: Request, admin: dict = Depen
     conn.close()
     if not dev:
         raise HTTPException(status_code=404, detail="Dispositivo no encontrado.")
-
-    cfg = {
+    return {
         "dispositivo_id": dev["id"],
         "nombre": dev["nombre"],
         "token_api": dev["token_api"],
@@ -1217,9 +1215,46 @@ def download_device_config(device_id: str, request: Request, admin: dict = Depen
         "resolucion_camara": [320, 240],
         "tamano_minimo_rostro_px": 60
     }
-    content = json.dumps(cfg, indent=4, ensure_ascii=False)
+
+@app.get("/api/devices/{device_id}/config-file")
+def download_device_config(device_id: str, request: Request, admin: dict = Depends(get_current_admin)):
+    content = json.dumps(_device_config(device_id, request), indent=4, ensure_ascii=False)
     return Response(content=content, media_type="application/json", headers={
         "Content-Disposition": f"attachment; filename=config_{device_id}.json"
+    })
+
+# Archivos que necesita la Raspberry (sin simulador, cachés ni datos locales)
+RPI_DIR = os.path.join(BASE_DIR, "raspberry_pi")
+RPI_ARCHIVOS = ["rpi_main.py", "face_engine.py", "descargar_modelos.py", "test_conexion.py",
+                "setup_rpi.sh", "requirements.txt", "LEEME_RASPBERRY.md"]
+
+@app.get("/api/devices/{device_id}/rpi-package")
+def download_device_package(device_id: str, request: Request, admin: dict = Depends(get_current_admin)):
+    """Zip listo para la Raspberry: programa + config.json de esta puerta + modelos (si están en la PC)."""
+    import zipfile
+    cfg = _device_config(device_id, request)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        def agregar(nombre: str, datos: bytes, ejecutable: bool = False):
+            info = zipfile.ZipInfo(f"neoaccess/{nombre}", date_time=datetime.now().timetuple()[:6])
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = ((0o755 if ejecutable else 0o644) | 0o100000) << 16
+            z.writestr(info, datos)
+        for nombre in RPI_ARCHIVOS:
+            ruta = os.path.join(RPI_DIR, nombre)
+            if os.path.isfile(ruta):
+                with open(ruta, "rb") as f:
+                    datos = f.read().replace(b"\r\n", b"\n")  # finales de línea de Linux
+                agregar(nombre, datos, nombre.endswith(".sh"))
+        agregar("config.json", json.dumps(cfg, indent=4, ensure_ascii=False).encode("utf-8"))
+        modelos = os.path.join(RPI_DIR, "models")
+        if os.path.isdir(modelos):
+            for nombre in sorted(os.listdir(modelos)):
+                if nombre.endswith(".onnx"):
+                    with open(os.path.join(modelos, nombre), "rb") as f:
+                        agregar(f"models/{nombre}", f.read())
+    return Response(content=buf.getvalue(), media_type="application/zip", headers={
+        "Content-Disposition": f"attachment; filename=neoaccess_{device_id}.zip"
     })
 
 # -------------------------------------------------------------

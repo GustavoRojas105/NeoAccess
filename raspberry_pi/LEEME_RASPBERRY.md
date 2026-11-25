@@ -4,6 +4,26 @@ Esta guía responde exactamente a tu pregunta: **¿Qué código le tengo que pon
 
 ---
 
+## Forma rápida (recomendada)
+
+1. En el panel: **Dispositivos → Vincular → "Descargar paquete para Raspberry Pi (.zip)"**. El zip ya trae el programa, los modelos y el `config.json` de esa puerta.
+2. Copia el zip a la Raspberry (USB, WinSCP o FileZilla) y ejecuta **una sola vez**:
+   ```bash
+   unzip neoaccess_<ID>.zip
+   bash neoaccess/setup_rpi.sh
+   ```
+3. Listo. La puerta arranca sola cada vez que se enciende la Raspberry y busca el servidor cada 15 segundos hasta encontrarlo; en el panel la tarjeta se pone en verde.
+
+**Si cambias el token o cambia la IP de la PC:** descarga solo el `config.json` y reemplaza `neoaccess/config.json`, o cópialo a la partición *boot* de la tarjeta SD (la que se ve en Windows) con el nombre `neoaccess_config.json`. La Raspberry lo detecta sola, sin reiniciar.
+
+Ver lo que está haciendo la puerta: `journalctl -u neoaccess-door -f`
+
+> Requisito: la Raspberry debe estar conectada al mismo Wi-Fi que la PC (se configura al grabar la SD con Raspberry Pi Imager).
+
+El resto de esta guía explica el detalle (pines, diagnóstico, configuración manual).
+
+---
+
 ## 1. ¿Qué archivos van en la Raspberry Pi Zero W?
 
 Para que tu Raspberry Pi Zero W funcione como un nodo de acceso físico real, solo debes copiar la carpeta **`raspberry_pi/`** a tu Raspberry Pi (mediante una memoria USB, o por red con WinSCP o FileZilla).
