@@ -142,6 +142,80 @@ class TestD_AprobacionYDetalle(Base):
         self.assertEqual(C.get("/api/users/AL-1/details", headers=self.A).status_code, 200)
 
 
+class _RedDePrueba:
+    """Sustituye a 'requests' del nodo: manda las peticiones al TestClient; la URL sin red falla."""
+    def __init__(self, base):
+        self.base = base
+
+    def _ir(self, metodo, url, **kw):
+        if not url.startswith(self.base):
+            raise ConnectionError("sin red")
+        kw.pop("timeout", None)
+        return getattr(C, metodo)(url[len(self.base):], **kw)
+
+    def get(self, url, **kw):
+        return self._ir("get", url, **kw)
+
+    def post(self, url, **kw):
+        return self._ir("post", url, **kw)
+
+
+class TestE_SimuladorDePuerta(Base):
+    """El simulador escribe por la API como una Raspberry y todo queda ligado a SIM-<LAB>."""
+
+    def test_simulador_registra_y_se_borra_sin_tocar_lo_real(self):
+        import os, sys, tempfile
+        from _entorno import RAIZ
+        sys.path.insert(0, os.path.join(RAIZ, "tools"))
+        import simulador_puerta as sp
+        import rpi_main as rm
+        import borrar_simulacion
+        base = "http://servidor-prueba"
+        red_original = rm.requests
+        rm.requests = _RedDePrueba(base)
+        sp.CARPETA_ESTADO = tempfile.mkdtemp()
+        sp.PuertaSimulada.start_heartbeat_thread = lambda self: None   # sin hilos en la prueba
+        sp.PuertaSimulada.start_command_thread = lambda self: None
+        try:
+            # Un acceso real de otra puerta, que NO debe borrarse
+            tok = sembrar()["token_rpi"]
+            C.post("/api/iot/access-attempt", json={"dispositivo_id": "RPI-RED", "token_api": tok, "usuario_id": "AL-1",
+                                                    "resultado": "permitido", "motivo": "real"})
+            reales = uno("SELECT COUNT(*) FROM registros_acceso WHERE dispositivo_id = 'RPI-RED'")[0]
+
+            sim = sp.Simulador(sp.BD(dbm.DB_PATH), base)
+            sim.usar_laboratorio("LAB-RED")
+            self.assertEqual(sim.nodo.device_id, "SIM-LAB-RED")
+            self.assertTrue(sim.estado()["en_linea"])
+            self.assertIsNotNone(uno("SELECT ultima_senal FROM dispositivos WHERE id = 'SIM-LAB-RED'")[0])  # latido llegó
+
+            alumno = [p for p in sim.bd.personas() if p["id"] == "AL-1"][0]
+            r = sim.nodo.presentar(alumno, None)
+            self.assertTrue(r["enviado"])
+            self.assertEqual(sim.nodo.presentar(None, None)["resultado"], "denegado")        # rostro desconocido
+            # Sin Wi-Fi: decide igual, guarda en cola y lo envía al reconectar
+            sim.nodo.cortar_red(True)
+            import time
+            time.sleep(1.1)   # el servidor descarta como duplicado misma persona+puerta en el mismo segundo
+            self.assertFalse(sim.nodo.presentar(alumno, None)["enviado"])
+            self.assertEqual(sim.estado()["pendientes"], 1)
+            sim.nodo.cortar_red(False)
+            sim.nodo.sincronizar()
+            self.assertEqual(sim.estado()["pendientes"], 0)
+            filas = todos("SELECT usuario_id, resultado, sincronizado_offline FROM registros_acceso WHERE dispositivo_id = 'SIM-LAB-RED' ORDER BY id")
+            self.assertEqual([f["sincronizado_offline"] for f in filas], [0, 0, 1])
+            self.assertEqual([f["usuario_id"] for f in filas], ["AL-1", None, "AL-1"])
+
+            # Borrar lo simulado: desaparece SIM-*, lo real se queda
+            self.assertEqual(borrar_simulacion.main(["--db", dbm.DB_PATH, "--si"]), 0)
+            self.assertEqual(uno("SELECT COUNT(*) FROM dispositivos WHERE id LIKE 'SIM-%'")[0], 0)
+            self.assertEqual(uno("SELECT COUNT(*) FROM registros_acceso WHERE dispositivo_id = 'SIM-LAB-RED'")[0], 0)
+            self.assertEqual(uno("SELECT COUNT(*) FROM registros_acceso WHERE dispositivo_id = 'RPI-RED'")[0], reales)
+            self.assertIsNotNone(uno("SELECT id FROM dispositivos WHERE id = 'RPI-RED'"))
+        finally:
+            rm.requests = red_original
+
+
 class TestZ_CierreDePeriodo(Base):
     """Al final: cambia el periodo activo."""
 

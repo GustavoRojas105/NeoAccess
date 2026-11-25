@@ -40,7 +40,6 @@ NeoAccess/
 │   ├── rpi_main.py                # Nodo de puerta: cámara + reconocimiento + relé GPIO 17
 │   ├── face_engine.py             # Motor facial YuNet + SFace (compartido con el servidor)
 │   ├── descargar_modelos.py       # Descarga los modelos ONNX a models/
-│   ├── simulator.py               # Simulador interactivo de la puerta en PC
 │   ├── test_conexion.py           # Diagnóstico de red, token y relevador
 │   ├── setup_rpi.sh               # Instalador automático en Raspberry Pi OS
 │   ├── config.json.template       # Plantilla de configuración (copiar a config.json)
@@ -48,7 +47,10 @@ NeoAccess/
 │   ├── LEEME_RASPBERRY.md         # Guía de conexión de la Raspberry Pi
 │   └── models/                    # (se descargan solos; no están en Git)
 │
-├── tools/                         # Registro masivo de rostros desde fotos + CSV
+├── tools/                         # Herramientas de PC
+│   ├── simulador_puerta.py        # Simulador de la puerta (página web) conectado a la plataforma
+│   ├── borrar_simulacion.py       # Borra todo lo generado por el simulador (puertas SIM-*)
+│   ├── asignar_contrasena.py      # Contraseña de portal para un usuario
 │   ├── entrenar_pkl_lote.py
 │   ├── plantilla_alumnos.ejemplo.csv   # Copiar a plantilla_alumnos.csv
 │   ├── fotos_credenciales/        # Fotos de entrada (no se suben a Git)

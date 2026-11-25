@@ -32,20 +32,24 @@ Todo el proyecto ya está guardado en tu Escritorio dentro de la carpeta `NeoAcc
 
 ---
 
-## 3. Pruebas sin Hardware Físico (Simulador Interactivo)
+## 3. Pruebas sin Hardware Físico (Simulador de puerta)
 
-Si deseas probar el comportamiento de los accesos, la validación de horarios y el modo sin internet antes de conectar la Raspberry Pi física:
+Para probar accesos, horarios y el modo sin internet antes de conectar la Raspberry Pi física:
 
 1. Deja corriendo el servidor (`run_server.bat`).
-2. Haz doble clic en **`run_simulator.bat`**.
-3. Podrás simular con un menú interactivo:
-   - Ingreso de alumnos con clase programada (Abre puerta).
-   - Rechazo de alumnos fuera de horario.
-   - Confirmación de clase de docentes (pase de lista).
-   - Intento de personas no registradas (denegado).
-   - Registro de entrada y salida de personal de limpieza.
-   - Desconexión del internet y almacenamiento en cola local (RF-08).
-   - Reconexión y vaciado de registros sin duplicados (RF-09).
+2. Haz doble clic en **`run_simulator.bat`**. Se abre una página que se ve como la puerta.
+3. Elige el laboratorio y quién llega ("Pasar frente a la cámara"). Puedes usar la hora real o simular un día y hora.
+   La puerta decide con la misma lógica de la Raspberry y todo aparece en la plataforma:
+   - la puerta `SIM-<LAB>` sale **en línea** en Dispositivos;
+   - los accesos permitidos/denegados y la bitácora de limpieza;
+   - "Desconectar Wi-Fi" guarda los accesos en cola y "Reconectar" los envía (RF-08, RF-09);
+   - la apertura remota (🔑) desde el panel abre la puerta del simulador.
+
+Todo lo simulado queda ligado a las puertas `SIM-*`. Para borrarlo:
+```
+python toolsorrar_simulacion.py        (muestra qué se borraría)
+python toolsorrar_simulacion.py --si   (lo borra, con respaldo previo)
+```
 
 ---
 

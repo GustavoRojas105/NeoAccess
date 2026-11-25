@@ -47,3 +47,6 @@ database/respaldos/
 tests/.coverage*
 htmlcov/
 __pycache__/
+
+# Estado local del simulador de puerta
+tools/simulador_datos/
