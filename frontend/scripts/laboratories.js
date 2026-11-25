@@ -49,7 +49,11 @@ function renderLaboratoriesTable(labs) {
           <button onclick="toggleLabStatus(${escJsArg(lab.id)}, ${isActivo ? 0 : 1})"
             class="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded transition"
             title="${isActivo ? 'Desactivar laboratorio' : 'Activar laboratorio'}">
-            <i data-lucide="${isActivo ? 'trash-2' : 'rotate-ccw'}" class="w-4 h-4"></i>
+            <i data-lucide="${isActivo ? 'power-off' : 'power'}" class="w-4 h-4"></i>
+          </button>
+          <button onclick="deleteLabPermanent(${escJsArg(lab.id)}, ${escJsArg(lab.nombre)})"
+            class="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition" title="Eliminar definitivamente">
+            <i data-lucide="trash-2" class="w-4 h-4"></i>
           </button>
         </td>
       </tr>
@@ -131,3 +135,11 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 });
+
+
+async function deleteLabPermanent(labId, nombre) {
+  if (await eliminarDefinitivo("laboratorio", labId, nombre)) {
+    await loadLaboratoriesData();
+    updateGlobalDeviceStatus();
+  }
+}

@@ -10,7 +10,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
-  <link rel="stylesheet" href="/styles/style.css?v=20261124_08">
+  <link rel="stylesheet" href="/styles/style.css?v=20261124_09">
   <script>
     // Si no hay sesión activa, limpiar DOM, pintar negro y redirigir al login puro
     if (!localStorage.getItem("neoaccess_token") || !localStorage.getItem("neoaccess_user")) {
@@ -128,11 +128,11 @@
         
         <div class="flex items-center gap-2 sm:gap-3 shrink-0">
           <div id="quick-device-status" class="hidden lg:flex items-center gap-2 text-xs bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
-            <span class="flex items-center"><span class="status-dot online"></span><span id="pill-online">0</span> En línea</span>
+            <span class="flex items-center gap-1" title="Raspberry enviando señal"><span class="status-dot online"></span><span id="pill-online" class="font-semibold">0</span><span>En línea</span></span>
             <span class="text-slate-300">|</span>
-            <span class="flex items-center"><span class="status-dot intermittent"></span><span id="pill-intermittent">0</span> Intermitente</span>
+            <span class="flex items-center gap-1" title="Señal con retrasos"><span class="status-dot intermittent"></span><span id="pill-intermittent" class="font-semibold">0</span><span>Intermitente</span></span>
             <span class="text-slate-300">|</span>
-            <span class="flex items-center"><span class="status-dot offline"></span><span id="pill-offline">0</span> Fuera</span>
+            <span class="flex items-center gap-1" title="Sin señal reciente"><span class="status-dot offline"></span><span id="pill-offline" class="font-semibold">0</span><span>Fuera de línea</span></span>
           </div>
 
           <button id="btn-refresh" class="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg border border-slate-200 transition" title="Actualizar datos">
@@ -400,6 +400,32 @@
               </table>
             </div>
           </div>
+        
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-slate-200">
+              <div>
+                <h4 class="text-sm font-bold text-slate-900">Grupos</h4>
+                <p class="text-xs text-slate-500">Se usan al registrar alumnos y al programar horarios.</p>
+              </div>
+              <button id="btn-modal-add-group" class="px-4 py-2 bg-slate-900 text-white text-xs font-semibold rounded-lg hover:bg-slate-800 transition flex items-center gap-1.5">
+                <i data-lucide="users" class="w-4 h-4"></i><span>Agregar grupo</span>
+              </button>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-slate-50 text-slate-600 uppercase font-semibold border-b border-slate-200">
+                  <tr>
+                    <th class="px-4 py-3">Clave</th>
+                    <th class="px-4 py-3">Nombre</th>
+                    <th class="px-4 py-3">Carrera</th>
+                    <th class="px-4 py-3">Semestre</th>
+                    <th class="px-4 py-3 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="table-groups" class="divide-y divide-slate-100 text-slate-700"></tbody>
+              </table>
+            </div>
+          </div>
         </section>
 
         <!-- ================= SECCIÓN 5: ALUMNOS ================= -->
@@ -450,6 +476,9 @@
               <h3 class="text-base font-bold text-slate-900">Docentes y Personal Institucional</h3>
               <p class="text-xs text-slate-500">Pase de asistencia docente automático (RF-03) y bitácora de limpieza (RF-04)</p>
             </div>
+            <button id="btn-modal-add-staff" class="px-4 py-2 bg-slate-900 text-white text-xs font-semibold rounded-lg hover:bg-slate-800 transition flex items-center gap-1.5">
+              <i data-lucide="user-plus" class="w-4 h-4"></i><span>Agregar docente o personal</span>
+            </button>
           </div>
 
           <div class="flex border-b border-slate-200 space-x-6 text-sm font-semibold">
@@ -457,7 +486,7 @@
             <button id="tab-limpieza" class="pb-2 text-slate-400 hover:text-slate-700">Personal de Limpieza & Mantenimiento</button>
           </div>
 
-          <div id="container-docentes" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div id="container-docentes" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
             <table class="w-full text-left text-xs">
               <thead class="bg-slate-50 text-slate-600 uppercase font-semibold border-b border-slate-200">
                 <tr>
@@ -473,8 +502,23 @@
             </table>
           </div>
 
-          <div id="container-limpieza" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden hidden space-y-4 p-4">
-            <h4 class="text-xs font-bold uppercase text-slate-600">Bitácora de Entradas y Salidas de Limpieza (RF-04)</h4>
+          <div id="container-limpieza" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto hidden space-y-4 p-4">
+            <h4 class="text-xs font-bold uppercase text-slate-600">Personal de limpieza registrado</h4>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-slate-50 text-slate-600 uppercase font-semibold border-b border-slate-200">
+                  <tr>
+                    <th class="px-4 py-3">Clave</th>
+                    <th class="px-4 py-3">Nombre</th>
+                    <th class="px-4 py-3">Rostro</th>
+                    <th class="px-4 py-3">Estado</th>
+                    <th class="px-4 py-3 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="table-personal-limpieza" class="divide-y divide-slate-100 text-slate-700"></tbody>
+              </table>
+            </div>
+            <h4 class="text-xs font-bold uppercase text-slate-600 pt-2">Bitácora de Entradas y Salidas de Limpieza (RF-04)</h4>
             <table class="w-full text-left text-xs">
               <thead class="bg-slate-50 text-slate-600 uppercase font-semibold border-b border-slate-200">
                 <tr>
@@ -1189,6 +1233,72 @@
     </div>
   </div>
 
+  <!-- Modal: Agregar grupo -->
+  <div id="modal-add-group" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay p-4 hidden">
+    <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-5 sm:p-6 border border-slate-200 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+        <h3 class="font-bold text-sm text-slate-900">Agregar grupo</h3>
+        <button type="button" onclick="closeModal('modal-add-group')" class="text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <form id="form-add-group" class="space-y-3 text-xs">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Clave *</label>
+            <input type="text" id="group-new-id" required maxlength="20" pattern="[A-Za-z0-9\-]{2,20}" placeholder="ISC-501" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg uppercase">
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Semestre *</label>
+            <select id="group-new-semester" required class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+              <option value="1">1°</option><option value="2">2°</option><option value="3">3°</option><option value="4">4°</option><option value="5">5°</option><option value="6">6°</option><option value="7">7°</option><option value="8">8°</option><option value="9">9°</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Nombre *</label>
+          <input type="text" id="group-new-name" required maxlength="80" placeholder="501 Sistemas Computacionales" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Carrera *</label>
+          <select id="group-new-career" required class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg"></select>
+        </div>
+        <button type="submit" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-lg">Crear grupo</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Agregar docente o personal de limpieza -->
+  <div id="modal-add-staff" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay p-4 hidden">
+    <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-5 sm:p-6 border border-slate-200 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+        <h3 class="font-bold text-sm text-slate-900">Agregar docente o personal</h3>
+        <button type="button" onclick="closeModal('modal-add-staff')" class="text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <form id="form-add-staff" class="space-y-3 text-xs">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Tipo *</label>
+          <select id="staff-new-type" required class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+            <option value="docente">Docente</option>
+            <option value="personal_limpieza">Personal de limpieza / mantenimiento</option>
+          </select>
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Nombre completo *</label>
+          <input type="text" id="staff-new-name" required minlength="3" maxlength="120" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Clave institucional *</label>
+          <input type="text" id="staff-new-clave" required minlength="3" maxlength="40" placeholder="DOC-1234" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg uppercase">
+          <p class="text-[10px] text-slate-400 mt-1">Con esta clave se identifica en el sistema.</p>
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Carrera / Área</label>
+          <select id="staff-new-career" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg"></select>
+        </div>
+        <button type="submit" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-lg">Registrar</button>
+      </form>
+    </div>
+  </div>
+
   <div id="modal-maintenance" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay p-4 hidden">
     <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-5 sm:p-6 border border-slate-200 space-y-4">
       <div class="flex items-center justify-between border-b border-slate-200 pb-3">
@@ -1296,15 +1406,16 @@
   </div>
 
   <!-- Scripts modulares de la aplicación con cache-busting -->
-  <script src="/scripts/dialogs.js?v=20261124_08"></script>
-  <script src="/scripts/materias.js?v=20261124_08"></script>
-  <script src="/scripts/app.js?v=20261124_08"></script>
-  <script src="/scripts/laboratories.js?v=20261124_08"></script>
-  <script src="/scripts/metrics.js?v=20261124_08"></script>
-  <script src="/scripts/devices.js?v=20261124_08"></script>
-  <script src="/scripts/schedules.js?v=20261124_08"></script>
-  <script src="/scripts/users.js?v=20261124_08"></script>
-  <script src="/scripts/reports.js?v=20261124_08"></script>
-  <script src="/scripts/admins.js?v=20261124_08"></script>
+  <script src="/scripts/dialogs.js?v=20261124_09"></script>
+  <script src="/scripts/materias.js?v=20261124_09"></script>
+  <script src="/scripts/eliminar.js?v=20261124_09"></script>
+  <script src="/scripts/app.js?v=20261124_09"></script>
+  <script src="/scripts/laboratories.js?v=20261124_09"></script>
+  <script src="/scripts/metrics.js?v=20261124_09"></script>
+  <script src="/scripts/devices.js?v=20261124_09"></script>
+  <script src="/scripts/schedules.js?v=20261124_09"></script>
+  <script src="/scripts/users.js?v=20261124_09"></script>
+  <script src="/scripts/reports.js?v=20261124_09"></script>
+  <script src="/scripts/admins.js?v=20261124_09"></script>
 </body>
 </html>

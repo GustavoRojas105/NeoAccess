@@ -788,15 +788,17 @@ def get_metrics_summary(
     stats = dict(cursor.fetchone() or {})
 
     # Dispositivos activos y estados
-    cursor.execute("""
-    SELECT 
-        COUNT(*) as total_dispositivos,
-        SUM(CASE WHEN estado = 'en_linea' AND activo = 1 THEN 1 ELSE 0 END) as en_linea,
-        SUM(CASE WHEN estado = 'intermitente' AND activo = 1 THEN 1 ELSE 0 END) as intermitentes,
-        SUM(CASE WHEN estado = 'fuera_de_linea' OR activo = 0 THEN 1 ELSE 0 END) as fuera_linea
-    FROM dispositivos;
-    """)
-    dev_stats = dict(cursor.fetchone() or {})
+    # Estado calculado en tiempo real con la última señal (el campo guardado puede estar desfasado)
+    cursor.execute("SELECT ultima_senal, intervalo_latido_seg, activo FROM dispositivos;")
+    estados = [calculate_device_status(r["ultima_senal"], r["intervalo_latido_seg"] or 300, r["activo"])
+               for r in cursor.fetchall()]
+    dev_stats = {
+        "total_dispositivos": len(estados),
+        "en_linea": estados.count("en_linea"),
+        "intermitentes": estados.count("intermitente"),
+        "fuera_linea": estados.count("fuera_de_linea"),
+        "desactivados": estados.count("desactivado"),
+    }
 
     total = stats.get("total_intentos") or 0
     permitidos = stats.get("total_permitidos") or 0
@@ -1552,15 +1554,126 @@ def get_groups(admin: dict = Depends(get_current_admin)):
 
 @app.post("/api/groups")
 def create_group(payload: GroupCreate, admin: dict = Depends(get_current_admin)):
+    gid = (payload.id or "").strip().upper()
+    nombre = " ".join((payload.nombre or "").split())
+    carrera = (payload.carrera or "").strip()
+    if not re.fullmatch(r"[A-Z0-9-]{2,20}", gid):
+        raise HTTPException(status_code=400, detail="La clave del grupo solo puede tener letras, números y guiones (2 a 20).")
+    if len(nombre) < 2 or not carrera:
+        raise HTTPException(status_code=400, detail="Indique el nombre y la carrera del grupo.")
+    if not 1 <= int(payload.semestre) <= 12:
+        raise HTTPException(status_code=400, detail="El semestre debe estar entre 1 y 12.")
     conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-    INSERT INTO grupos (id, nombre, carrera, semestre)
-    VALUES (?, ?, ?, ?);
-    """, (payload.id, payload.nombre, payload.carrera, payload.semestre))
-    conn.commit()
-    conn.close()
-    return {"success": True, "message": "Grupo registrado."}
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM grupos WHERE id = ?", (gid,))
+        if cursor.fetchone():
+            raise HTTPException(status_code=400, detail=f"Ya existe el grupo {gid}.")
+        cursor.execute("""
+        INSERT INTO grupos (id, nombre, carrera, semestre)
+        VALUES (?, ?, ?, ?);
+        """, (gid, nombre, carrera, int(payload.semestre)))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"success": True, "message": f"Grupo {gid} registrado."}
+
+# -------------------------------------------------------------
+# ELIMINACIÓN DEFINITIVA (con vista previa de lo que se borra)
+# -------------------------------------------------------------
+# Cuántos registros relacionados se pierden al eliminar cada cosa.
+# Las cascadas las hace SQLite (PRAGMA foreign_keys = ON en get_connection).
+_IMPACTO_ELIMINAR = {
+    "usuario": {
+        "tabla": "usuarios",
+        "conteos": {
+            "rostro": "SELECT COUNT(*) FROM metadatos_faciales WHERE usuario_id = ?",
+            "horarios": "SELECT COUNT(*) FROM horarios WHERE docente_id = ?",
+            "bitacoras_limpieza": "SELECT COUNT(*) FROM registros_limpieza WHERE personal_id = ?",
+            "accesos_conservados": "SELECT COUNT(*) FROM registros_acceso WHERE usuario_id = ?",
+        },
+    },
+    "laboratorio": {
+        "tabla": "laboratorios",
+        "conteos": {
+            "dispositivos_sin_lab": "SELECT COUNT(*) FROM dispositivos WHERE laboratorio_id = ?",
+            "horarios": "SELECT COUNT(*) FROM horarios WHERE laboratorio_id = ?",
+            "accesos": "SELECT COUNT(*) FROM registros_acceso WHERE laboratorio_id = ?",
+            "bitacoras_limpieza": "SELECT COUNT(*) FROM registros_limpieza WHERE laboratorio_id = ?",
+        },
+    },
+    "dispositivo": {
+        "tabla": "dispositivos",
+        "conteos": {
+            "accesos": "SELECT COUNT(*) FROM registros_acceso WHERE dispositivo_id = ?",
+            "bitacoras_limpieza": "SELECT COUNT(*) FROM registros_limpieza WHERE dispositivo_id = ?",
+            "eventos": "SELECT COUNT(*) FROM eventos_dispositivo WHERE dispositivo_id = ?",
+        },
+    },
+    "grupo": {
+        "tabla": "grupos",
+        "conteos": {
+            "alumnos_sin_grupo": "SELECT COUNT(*) FROM usuarios WHERE grupo_id = ?",
+            "horarios": "SELECT COUNT(*) FROM horarios WHERE grupo_id = ?",
+        },
+    },
+}
+
+def _impacto(cursor, tipo: str, item_id: str) -> dict:
+    cfg = _IMPACTO_ELIMINAR.get(tipo)
+    if not cfg:
+        raise HTTPException(status_code=404, detail="Tipo no válido.")
+    cursor.execute(f"SELECT 1 FROM {cfg['tabla']} WHERE id = ?", (item_id,))
+    if not cursor.fetchone():
+        raise HTTPException(status_code=404, detail="El registro ya no existe.")
+    return {k: cursor.execute(q, (item_id,)).fetchone()[0] for k, q in cfg["conteos"].items()}
+
+@app.get("/api/delete-preview/{tipo}/{item_id}")
+def delete_preview(tipo: str, item_id: str, admin: dict = Depends(get_current_admin)):
+    conn = get_connection()
+    try:
+        return _impacto(conn.cursor(), tipo, item_id)
+    finally:
+        conn.close()
+
+def _eliminar(tipo: str, item_id: str) -> dict:
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        impacto = _impacto(cursor, tipo, item_id)
+        cursor.execute(f"DELETE FROM {_IMPACTO_ELIMINAR[tipo]['tabla']} WHERE id = ?", (item_id,))
+        conn.commit()
+    finally:
+        conn.close()
+    return impacto
+
+@app.delete("/api/users/{user_id}/permanent")
+def delete_user_permanent(user_id: str, admin: dict = Depends(get_current_admin)):
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT nombre_completo, tipo FROM usuarios WHERE id = ?", (user_id,)).fetchone()
+    finally:
+        conn.close()
+    impacto = _eliminar("usuario", user_id)
+    if row:
+        destroy_sessions_for(row["tipo"], user_id)  # si tenía sesión abierta, se cierra
+    return {"success": True, "impacto": impacto,
+            "message": f"{row['nombre_completo'] if row else user_id} eliminado definitivamente."}
+
+@app.delete("/api/labs/{lab_id}/permanent")
+def delete_lab_permanent(lab_id: str, admin: dict = Depends(get_current_admin)):
+    impacto = _eliminar("laboratorio", lab_id)
+    return {"success": True, "impacto": impacto, "message": f"Laboratorio {lab_id} eliminado definitivamente."}
+
+@app.delete("/api/devices/{device_id}/permanent")
+def delete_device_permanent(device_id: str, admin: dict = Depends(get_current_admin)):
+    impacto = _eliminar("dispositivo", device_id)
+    return {"success": True, "impacto": impacto, "message": f"Dispositivo {device_id} eliminado definitivamente."}
+
+@app.delete("/api/groups/{group_id}")
+def delete_group(group_id: str, admin: dict = Depends(get_current_admin)):
+    impacto = _eliminar("grupo", group_id)
+    return {"success": True, "impacto": impacto, "message": f"Grupo {group_id} eliminado."}
 
 # -------------------------------------------------------------
 # RUTAS DE USUARIOS: ALUMNOS, MAESTROS, LIMPIEZA (RF-14, RF-15, RF-16)
@@ -1688,6 +1801,19 @@ def delete_user(user_id: str, admin: dict = Depends(get_current_admin)):
     conn.commit()
     conn.close()
     return {"success": True, "message": "Usuario dado de baja (marcado inactivo)."}
+
+@app.post("/api/users/{user_id}/reactivate")
+def reactivate_user(user_id: str, admin: dict = Depends(get_current_admin)):
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE usuarios SET estado = 'activo' WHERE id = ?", (user_id,))
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+        conn.commit()
+    finally:
+        conn.close()
+    return {"success": True, "message": "Usuario reactivado."}
 
 @app.get("/api/users/{user_id}/details")
 def get_user_details(user_id: str, admin: dict = Depends(get_current_admin)):

@@ -58,9 +58,18 @@ function renderStudentsCards(students) {
             class="py-2 px-3 bg-slate-100 text-slate-700 rounded-lg border border-slate-300" title="Ver detalle">
             <i data-lucide="eye" class="w-4 h-4"></i>
           </button>
+          ${isActivo ? `
           <button onclick="toggleUserStatus(${escJsArg(u.id)})"
             class="py-2 px-3 bg-slate-100 text-slate-500 rounded-lg border border-slate-300" title="Dar de baja">
             <i data-lucide="user-x" class="w-4 h-4"></i>
+          </button>` : `
+          <button onclick="reactivateUser(${escJsArg(u.id)})"
+            class="py-2 px-3 bg-emerald-50 text-emerald-700 rounded-lg border border-emerald-200" title="Reactivar">
+            <i data-lucide="user-check" class="w-4 h-4"></i>
+          </button>`}
+          <button onclick="deleteUserPermanent(${escJsArg(u.id)}, ${escJsArg(u.nombre_completo)})"
+            class="py-2 px-3 bg-red-50 text-red-600 rounded-lg border border-red-200" title="Eliminar definitivamente">
+            <i data-lucide="trash-2" class="w-4 h-4"></i>
           </button>
         </div>
       </div>
@@ -119,9 +128,18 @@ function renderStudentsTable(students) {
             <i data-lucide="eye" class="w-4 h-4"></i>
           </button>
 
+          ${isActivo ? `
           <button onclick="toggleUserStatus(${escJsArg(u.id)})"
-            class="p-1.5 text-slate-400 hover:text-red-600 hover:bg-slate-100 rounded transition" title="Dar de baja">
+            class="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-slate-100 rounded transition" title="Dar de baja (bloquea el acceso, conserva el registro)">
             <i data-lucide="user-x" class="w-4 h-4"></i>
+          </button>` : `
+          <button onclick="reactivateUser(${escJsArg(u.id)})"
+            class="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded transition" title="Reactivar">
+            <i data-lucide="user-check" class="w-4 h-4"></i>
+          </button>`}
+          <button onclick="deleteUserPermanent(${escJsArg(u.id)}, ${escJsArg(u.nombre_completo)})"
+            class="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition" title="Eliminar definitivamente">
+            <i data-lucide="trash-2" class="w-4 h-4"></i>
           </button>
         </td>
       </tr>
@@ -135,6 +153,9 @@ async function loadTeachersData() {
   try {
     const docentes = await apiFetch("/api/users?tipo=docente");
     renderDocentesTable(docentes);
+
+    const personal = await apiFetch("/api/users?tipo=personal_limpieza");
+    renderPersonalLimpieza(personal);
 
     const limpiezas = await apiFetch("/api/reports/cleaning");
     renderLimpiezaTable(limpiezas);
@@ -191,6 +212,7 @@ function renderDocentesTable(docentes) {
             class="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition" title="Ver Detalle e Historial">
             <i data-lucide="eye" class="w-4 h-4"></i>
           </button>
+          ${staffStatusButtons(d)}
         </td>
       </tr>
     `;
@@ -299,7 +321,7 @@ async function toggleUserStatus(userId) {
   if (!(await showConfirm("¿Está seguro de dar de baja a este usuario?", { title: "Dar de baja", confirmText: "Dar de baja", danger: true }))) return;
   try {
     await apiFetch(`/api/users/${userId}`, { method: "DELETE" });
-    loadStudentsData();
+    refreshActiveSection();
   } catch (err) {
     showAlert("Error al dar de baja: " + err.message);
   }
@@ -568,5 +590,91 @@ document.addEventListener("DOMContentLoaded", () => {
     tabDoc.classList.add("text-slate-400");
     cLim.classList.remove("hidden");
     cDoc.classList.add("hidden");
+  });
+});
+
+
+// ─────────────── Baja / reactivar / eliminar definitivamente ───────────────
+function staffStatusButtons(u) {
+  const baja = u.estado === "activo"
+    ? `<button onclick="toggleUserStatus(${escJsArg(u.id)})" class="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-slate-100 rounded transition" title="Dar de baja (bloquea el acceso, conserva el registro)"><i data-lucide="user-x" class="w-4 h-4"></i></button>`
+    : `<button onclick="reactivateUser(${escJsArg(u.id)})" class="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded transition" title="Reactivar"><i data-lucide="user-check" class="w-4 h-4"></i></button>`;
+  return baja + `<button onclick="deleteUserPermanent(${escJsArg(u.id)}, ${escJsArg(u.nombre_completo)})" class="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition" title="Eliminar definitivamente"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`;
+}
+
+async function reactivateUser(userId) {
+  try {
+    await apiFetch(`/api/users/${encodeURIComponent(userId)}/reactivate`, { method: "POST" });
+    refreshActiveSection();
+  } catch (err) {
+    showAlert("No se pudo reactivar: " + err.message, { type: "error" });
+  }
+}
+
+async function deleteUserPermanent(userId, nombre) {
+  if (await eliminarDefinitivo("usuario", userId, nombre)) refreshActiveSection();
+}
+
+function renderPersonalLimpieza(personal) {
+  const tbody = document.getElementById("table-personal-limpieza");
+  if (!tbody) return;
+  if (personal.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-400">No hay personal de limpieza registrado. Use "Agregar docente o personal".</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = personal.map(p => `
+    <tr class="hover:bg-slate-50 transition ${p.estado === "activo" ? "" : "opacity-60"}">
+      <td class="px-4 py-3 font-mono font-bold text-slate-900">${esc(p.matricula_clave)}</td>
+      <td class="px-4 py-3 font-medium text-slate-900">${esc(p.nombre_completo)}</td>
+      <td class="px-4 py-3">${p.tiene_rostro === 1
+        ? '<span class="text-[11px] text-emerald-700">Registrado</span>'
+        : '<span class="text-[11px] text-amber-700">Sin registrar</span>'}</td>
+      <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-full text-[10px] font-semibold ${p.estado === "activo" ? "bg-slate-100 text-slate-800" : "bg-red-50 text-red-700"}">${p.estado === "activo" ? "Activo" : "Baja"}</span></td>
+      <td class="px-4 py-3 text-right space-x-1 whitespace-nowrap">
+        <button onclick="openFaceCaptureModal(${escJsArg(p.id)}, ${escJsArg(p.nombre_completo)})" class="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition" title="Registrar Rostro"><i data-lucide="scan-face" class="w-4 h-4"></i></button>
+        ${staffStatusButtons(p)}
+      </td>
+    </tr>`).join("");
+  if (window.lucide) lucide.createIcons();
+}
+
+// ─────────────── Agregar docente o personal de limpieza ───────────────
+document.addEventListener("DOMContentLoaded", () => {
+  const selCarrera = document.getElementById("staff-new-career");
+  if (selCarrera && typeof MATERIAS_ITSOEH !== "undefined") {
+    selCarrera.innerHTML = `<option value="">Sin carrera (área administrativa)</option>` +
+      Object.keys(MATERIAS_ITSOEH).map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+  }
+
+  document.getElementById("btn-modal-add-staff")?.addEventListener("click", () => {
+    document.getElementById("form-add-staff")?.reset();
+    openModal("modal-add-staff");
+  });
+
+  document.getElementById("form-add-staff")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const tipo = document.getElementById("staff-new-type").value;
+    const clave = document.getElementById("staff-new-clave").value.trim().toUpperCase();
+    const payload = {
+      id: clave.replace(/[^A-Z0-9-]/g, "-"),
+      nombre_completo: document.getElementById("staff-new-name").value.trim(),
+      matricula_clave: clave,
+      carrera: document.getElementById("staff-new-career").value || null,
+      grupo_id: null,
+      tipo,
+      estado: "activo",
+    };
+    try {
+      await apiFetch("/api/users", { method: "POST", body: payload });
+      closeModal("modal-add-staff");
+      e.target.reset();
+      loadTeachersData();
+      if (await showConfirm(`${payload.nombre_completo} registrado.\n\n¿Registrar ahora su rostro con la cámara?`,
+        { title: "Personal registrado", type: "success", confirmText: "Registrar rostro", cancelText: "Después" })) {
+        openFaceCaptureModal(payload.id, payload.nombre_completo);
+      }
+    } catch (err) {
+      showAlert("No se pudo registrar: " + err.message, { type: "error" });
+    }
   });
 });

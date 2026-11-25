@@ -30,7 +30,7 @@ NeoAccess/
 │   ├── styles/style.css
 │   └── scripts/                   # app.js, laboratories.js, devices.js, metrics.js,
 │                                  # schedules.js, users.js (captura facial), reports.js,
-│                                  # admins.js, dialogs.js, materias.js
+│                                  # admins.js, dialogs.js, materias.js, eliminar.js
 │
 ├── raspberry_pi/                  # Paquete para la Raspberry Pi Zero W de cada puerta
 │   ├── rpi_main.py                # Nodo de puerta: cámara + reconocimiento + relé GPIO 17
@@ -144,6 +144,16 @@ Desde el Dashboard → menú lateral → **Administradores**:
 - **Agregar administrador:** nombre, usuario, correo (opcional) y contraseña de mínimo 8 caracteres. El usuario no puede repetirse ni coincidir con la matrícula o clave de un alumno o docente.
 - **Desactivar / Reactivar:** un administrador desactivado sale del sistema de inmediato. Nadie puede desactivarse a sí mismo y siempre debe quedar al menos uno activo.
 - **Cambiar mi contraseña:** pide la contraseña actual y cierra las demás sesiones abiertas de esa cuenta.
+
+## 🗑️ Dar de baja vs. Eliminar definitivamente
+
+| Acción | Dónde | Qué hace |
+|---|---|---|
+| **Dar de baja** (icono de persona tachada) | Alumnos, Maestros y Personal | Bloquea el acceso en las puertas pero conserva el registro, su rostro y su historial. Se puede **reactivar**. |
+| **Desactivar** (icono de encendido) | Laboratorios, Dispositivos, Administradores | Deja de funcionar, pero se puede volver a activar. |
+| **Eliminar definitivamente** (bote de basura) | Alumnos, docentes, personal de limpieza, laboratorios, Raspberry y grupos | Borra para siempre. Antes muestra qué más se pierde (rostro, horarios, historial). Al eliminar una persona su historial de accesos se conserva como "Desconocido". |
+
+Los **grupos** se crean en **Horarios y Grupos → Agregar grupo**, y los **docentes y el personal de limpieza** en **Maestros y Personal → Agregar docente o personal**.
 
 ## 🏫 Cómo Agregar un Nuevo Laboratorio Real
 

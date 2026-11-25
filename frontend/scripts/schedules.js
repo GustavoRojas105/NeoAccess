@@ -134,3 +134,66 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 });
+
+
+// ─────────────── Grupos ───────────────
+async function loadGroupsTable() {
+  const tbody = document.getElementById("table-groups");
+  if (!tbody) return;
+  try {
+    const grupos = await apiFetch("/api/groups");
+    tbody.innerHTML = grupos.length ? grupos.map(g => `
+      <tr class="hover:bg-slate-50 transition">
+        <td class="px-4 py-3 font-mono font-bold text-slate-900">${esc(g.id)}</td>
+        <td class="px-4 py-3 font-medium text-slate-900">${esc(g.nombre)}</td>
+        <td class="px-4 py-3 text-slate-600">${esc(g.carrera)}</td>
+        <td class="px-4 py-3 text-slate-600">${esc(g.semestre)}°</td>
+        <td class="px-4 py-3 text-right">
+          <button onclick="deleteGroup(${escJsArg(g.id)}, ${escJsArg(g.nombre)})" class="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition" title="Eliminar grupo">
+            <i data-lucide="trash-2" class="w-4 h-4"></i>
+          </button>
+        </td>
+      </tr>`).join("")
+      : `<tr><td colspan="5" class="p-4 text-center text-slate-400">No hay grupos. Use "Agregar grupo" para crear el primero.</td></tr>`;
+    if (window.lucide) lucide.createIcons();
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-400">No se pudieron cargar los grupos</td></tr>`;
+  }
+}
+
+async function deleteGroup(groupId, nombre) {
+  if (await eliminarDefinitivo("grupo", groupId, nombre)) {
+    loadGroupsTable();
+    loadSchedulesData();
+  }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const selCarrera = document.getElementById("group-new-career");
+  if (selCarrera && typeof MATERIAS_ITSOEH !== "undefined") {
+    selCarrera.innerHTML = `<option value="">Seleccione una carrera...</option>` +
+      Object.keys(MATERIAS_ITSOEH).map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+  }
+  document.getElementById("btn-modal-add-group")?.addEventListener("click", () => {
+    document.getElementById("form-add-group")?.reset();
+    openModal("modal-add-group");
+  });
+  document.getElementById("form-add-group")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const payload = {
+      id: document.getElementById("group-new-id").value.trim().toUpperCase(),
+      nombre: document.getElementById("group-new-name").value.trim(),
+      carrera: document.getElementById("group-new-career").value,
+      semestre: parseInt(document.getElementById("group-new-semester").value, 10),
+    };
+    try {
+      const res = await apiFetch("/api/groups", { method: "POST", body: payload });
+      closeModal("modal-add-group");
+      e.target.reset();
+      showAlert(res.message, { type: "success" });
+      loadGroupsTable();
+    } catch (err) {
+      showAlert("No se pudo crear el grupo: " + err.message, { type: "error" });
+    }
+  });
+});

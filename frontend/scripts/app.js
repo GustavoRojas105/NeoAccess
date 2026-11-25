@@ -381,7 +381,7 @@ function refreshActiveSection() {
   if (STATE.currentSection === "metrics") loadMetricsData();
   else if (STATE.currentSection === "devices") loadDevicesData();
   else if (STATE.currentSection === "laboratories") loadLaboratoriesData();
-  else if (STATE.currentSection === "schedules") loadSchedulesData();
+  else if (STATE.currentSection === "schedules") { loadSchedulesData(); loadGroupsTable(); }
   else if (STATE.currentSection === "students") loadStudentsData();
   else if (STATE.currentSection === "teachers") loadTeachersData();
   else if (STATE.currentSection === "reports") loadReportsDropdowns();
@@ -506,7 +506,7 @@ async function updateGlobalDeviceStatus() {
     devices.forEach(d => {
       if (d.estado === "en_linea") online++;
       else if (d.estado === "intermitente") intermittent++;
-      else offline++;
+      else if (d.estado === "fuera_de_linea") offline++;   // los desactivados no cuentan
     });
     document.getElementById("pill-online").textContent = online;
     document.getElementById("pill-intermittent").textContent = intermittent;
@@ -535,9 +535,13 @@ function setupGlobalEvents() {
       } else if (STATE.currentSection === 'devices') {
         loadDevicesData();
       }
-      updateGlobalDeviceStatus();
     }
   }, 10000);
+
+  // ── Indicador de puertas del encabezado: estado real cada 5 seg ──
+  setInterval(() => {
+    if (STATE.token && STATE.user && STATE.user.rol === 'administrador') updateGlobalDeviceStatus();
+  }, 5000);
 
   document.getElementById("btn-refresh")?.addEventListener("click", () => {
     refreshActiveSection();

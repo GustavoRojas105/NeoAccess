@@ -107,6 +107,12 @@ function renderDeviceCards(devices) {
             title="${dev.activo ? 'Desactivar dispositivo' : 'Activar dispositivo'}">
             <i data-lucide="${dev.activo ? 'power-off' : 'power'}" class="w-3.5 h-3.5"></i>
           </button>
+
+          <button onclick="deleteDevicePermanent(${escJsArg(dev.id)}, ${escJsArg(dev.nombre)})"
+            class="py-1.5 px-2.5 bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-700 text-xs rounded-lg border border-slate-300 transition flex items-center justify-center"
+            title="Eliminar definitivamente">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+          </button>
         </div>
       </div>
     `;
@@ -194,3 +200,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 });
+
+
+async function deleteDevicePermanent(deviceId, nombre) {
+  if (await eliminarDefinitivo("dispositivo", deviceId, nombre)) loadDevicesData();
+}
