@@ -10,7 +10,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
-  <link rel="stylesheet" href="/styles/style.css?v=20261124_06">
+  <link rel="stylesheet" href="/styles/style.css?v=20261124_07">
   <script>
     // Si no hay sesión activa, limpiar DOM, pintar negro y redirigir al login puro
     if (!localStorage.getItem("neoaccess_token") || !localStorage.getItem("neoaccess_user")) {
@@ -1041,7 +1041,7 @@
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block font-semibold text-slate-700 mb-1">Grupo *</label>
-            <input type="text" id="schedule-new-group" required placeholder="MEC-801" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg uppercase">
+            <select id="schedule-new-group" required class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg"></select>
           </div>
           <div>
             <label class="block font-semibold text-slate-700 mb-1">Clave Docente *</label>
@@ -1050,8 +1050,8 @@
         </div>
 
         <div>
-          <label class="block font-semibold text-slate-700 mb-1">Nombre de la Materia *</label>
-          <input type="text" id="schedule-new-subject" required placeholder="Robótica Móvil y Visión" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+          <label class="block font-semibold text-slate-700 mb-1">Materia (retícula oficial ITSOEH) *</label>
+          <select id="schedule-new-subject" required class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg"></select>
         </div>
 
         <div class="grid grid-cols-3 gap-2">
@@ -1192,13 +1192,14 @@
   </div>
 
   <!-- Scripts modulares de la aplicación con cache-busting -->
-  <script src="/scripts/dialogs.js?v=20261124_06"></script>
-  <script src="/scripts/app.js?v=20261124_06"></script>
-  <script src="/scripts/laboratories.js?v=20261124_06"></script>
-  <script src="/scripts/metrics.js?v=20261124_06"></script>
-  <script src="/scripts/devices.js?v=20261124_06"></script>
-  <script src="/scripts/schedules.js?v=20261124_06"></script>
-  <script src="/scripts/users.js?v=20261124_06"></script>
-  <script src="/scripts/reports.js?v=20261124_06"></script>
+  <script src="/scripts/dialogs.js?v=20261124_07"></script>
+  <script src="/scripts/materias.js?v=20261124_07"></script>
+  <script src="/scripts/app.js?v=20261124_07"></script>
+  <script src="/scripts/laboratories.js?v=20261124_07"></script>
+  <script src="/scripts/metrics.js?v=20261124_07"></script>
+  <script src="/scripts/devices.js?v=20261124_07"></script>
+  <script src="/scripts/schedules.js?v=20261124_07"></script>
+  <script src="/scripts/users.js?v=20261124_07"></script>
+  <script src="/scripts/reports.js?v=20261124_07"></script>
 </body>
 </html>

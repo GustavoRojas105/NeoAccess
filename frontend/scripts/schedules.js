@@ -62,6 +62,24 @@ function renderSchedulesTable(schedules) {
   if (window.lucide) lucide.createIcons();
 }
 
+// Grupos reales (con su carrera) para el formulario "Agregar horario"
+async function loadScheduleFormOptions() {
+  const selGrupo = document.getElementById("schedule-new-group");
+  const selMateria = document.getElementById("schedule-new-subject");
+  if (!selGrupo) return;
+  try {
+    const grupos = await apiFetch("/api/groups");
+    selGrupo.innerHTML = grupos.length
+      ? `<option value="">Seleccione un grupo...</option>` + grupos.map(g =>
+          `<option value="${esc(g.id)}" data-carrera="${esc(g.carrera || "")}" data-semestre="${esc(g.semestre || "")}">${esc(g.id)} • ${esc(g.nombre)}</option>`
+        ).join("")
+      : `<option value="">No hay grupos registrados</option>`;
+  } catch (err) {
+    selGrupo.innerHTML = `<option value="">No se pudieron cargar los grupos</option>`;
+  }
+  fillSubjectSelect(selMateria, null, null);
+}
+
 async function deleteSchedule(scheduleId) {
   if (!(await showConfirm("¿Está seguro de eliminar este horario? Los alumnos y docentes no podrán acceder en este bloque.", { title: "Eliminar horario", confirmText: "Eliminar", danger: true }))) {
     return;
@@ -80,8 +98,15 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Modal para agregar horario
-  document.getElementById("btn-modal-add-schedule")?.addEventListener("click", () => {
+  document.getElementById("btn-modal-add-schedule")?.addEventListener("click", async () => {
+    await loadScheduleFormOptions();
     openModal("modal-add-schedule");
+  });
+
+  // Al elegir el grupo, la lista de materias muestra las de su carrera (y semestre)
+  document.getElementById("schedule-new-group")?.addEventListener("change", (e) => {
+    const opt = e.target.selectedOptions[0];
+    fillSubjectSelect(document.getElementById("schedule-new-subject"), opt?.dataset.carrera, opt?.dataset.semestre);
   });
 
   document.getElementById("form-add-schedule")?.addEventListener("submit", async (e) => {

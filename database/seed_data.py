@@ -110,18 +110,18 @@ def seed():
 
     # 7. Horarios Semanales
     horarios = [
-        ("MEC-801", "LAB-STEM-01", "DOC-001", "Robótica Industrial", "Lunes", "07:00", "09:00"),
-        ("MEC-801", "LAB-STEM-02", "DOC-002", "Internet de las Cosas", "Lunes", "09:00", "11:00"),
-        ("SIS-701", "LAB-ED6-02", "DOC-003", "Redes Neuronales y Cómputo", "Lunes", "11:00", "13:00"),
-        ("MEC-601", "LAB-STEM-01", "DOC-001", "Control de Procesos Industriales", "Martes", "08:00", "10:00"),
-        ("MEC-801", "LAB-STEM-03", "DOC-002", "Manufactura Digital Avanzada", "Martes", "10:00", "12:00"),
-        ("MEC-801", "LAB-STEM-01", "DOC-001", "Robótica Industrial", "Miércoles", "07:00", "09:00"),
-        ("SIS-701", "LAB-ED6-02", "DOC-003", "Sistemas Distribuidos", "Miércoles", "09:00", "11:00"),
-        ("MEC-601", "LAB-ED6-01", "DOC-002", "Simulación Mecatrónica", "Miércoles", "11:00", "13:00"),
-        ("MEC-801", "LAB-STEM-02", "DOC-002", "Proyecto Integrador IoT", "Jueves", "13:00", "15:00"),
-        ("MEC-401", "LAB-STEM-01", "DOC-001", "Circuitos Lógicos y PLC", "Jueves", "15:00", "17:00"),
-        ("MEC-801", "LAB-STEM-03", "DOC-002", "Taller de Prototipos STEM", "Viernes", "08:00", "11:00"),
-        ("SIS-701", "LAB-ED6-01", "DOC-003", "Laboratorio de Algoritmos", "Viernes", "11:00", "13:00")
+        ("MEC-801", "LAB-STEM-01", "DOC-001", "Análisis de Circuitos de CA", "Lunes", "07:00", "09:00"),
+        ("MEC-801", "LAB-STEM-02", "DOC-002", "Sistemas y Máquinas de Fluidos", "Lunes", "09:00", "11:00"),
+        ("SIS-701", "LAB-ED6-02", "DOC-003", "Conmutación y Enrutamiento en Redes de Datos", "Lunes", "11:00", "13:00"),
+        ("MEC-601", "LAB-STEM-01", "DOC-001", "Análisis de Circuitos de CA", "Martes", "08:00", "10:00"),
+        ("MEC-801", "LAB-STEM-03", "DOC-002", "Taller de Investigación II", "Martes", "10:00", "12:00"),
+        ("MEC-801", "LAB-STEM-01", "DOC-001", "Análisis de Circuitos de CA", "Miércoles", "07:00", "09:00"),
+        ("SIS-701", "LAB-ED6-02", "DOC-003", "Sistemas Operativos I", "Miércoles", "09:00", "11:00"),
+        ("MEC-601", "LAB-ED6-01", "DOC-002", "Sistemas y Máquinas de Fluidos", "Miércoles", "11:00", "13:00"),
+        ("MEC-801", "LAB-STEM-02", "DOC-002", "Sistemas y Máquinas de Fluidos", "Jueves", "13:00", "15:00"),
+        ("MEC-401", "LAB-STEM-01", "DOC-001", "Análisis de Circuitos de CA", "Jueves", "15:00", "17:00"),
+        ("MEC-801", "LAB-STEM-03", "DOC-002", "Taller de Investigación II", "Viernes", "08:00", "11:00"),
+        ("SIS-701", "LAB-ED6-01", "DOC-003", "Programación Web", "Viernes", "11:00", "13:00")
     ]
     cursor.executemany("""
     INSERT INTO horarios (grupo_id, laboratorio_id, docente_id, materia, dia_semana, hora_inicio, hora_fin)
