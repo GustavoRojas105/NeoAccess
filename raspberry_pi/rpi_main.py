@@ -15,7 +15,7 @@ import sys
 import json
 import time
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 
 from face_engine import (
@@ -357,18 +357,27 @@ class NeoAccessRaspberryNode:
             return True, "Acceso administrativo"
 
         horarios = self.offline_cache.get("horarios", [])
+        # La puerta abre unos minutos antes de la clase (lo define el servidor; 10 por defecto)
+        try:
+            tolerancia = max(0, int(self.offline_cache.get("tolerancia_min", 10)))
+        except (TypeError, ValueError):
+            tolerancia = 10
+        hora_con_tolerancia = (now + timedelta(minutes=tolerancia)).strftime("%H:%M")
+
+        def en_horario(h):
+            return h["hora_inicio"] <= hora_con_tolerancia and hora_actual <= h["hora_fin"]
 
         if u_type == "alumno":
             for h in horarios:
                 if h["dia_semana"] == dia_actual and h["grupo_id"] == grupo_id:
-                    if h["hora_inicio"] <= hora_actual <= h["hora_fin"]:
+                    if en_horario(h):
                         return True, f"Acceso de alumno autorizado: Clase de {h['materia']} (Grupo {grupo_id})"
             return False, f"Acceso denegado: El grupo {grupo_id} no tiene clase en este salón a las {hora_actual} ({dia_actual})"
 
         if u_type == "docente":
             for h in horarios:
                 if h["dia_semana"] == dia_actual and h["docente_id"] == u_id:
-                    if h["hora_inicio"] <= hora_actual <= h["hora_fin"]:
+                    if en_horario(h):
                         return True, f"Docente en turno: Impartiendo {h['materia']}"
             return False, f"Acceso denegado: El docente no tiene clase asignada a las {hora_actual} ({dia_actual})"
 

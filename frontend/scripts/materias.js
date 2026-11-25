@@ -23,8 +23,9 @@ async function fillCareerSelect(select, primeraOpcion) {
   if (!select) return;
   await MATERIAS_LISTAS;
   const escapar = (t) => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const propias = (typeof STATE !== "undefined" && STATE.user && STATE.user.rol === "jefe_carrera") ? (STATE.user.carreras || []) : null;
   select.innerHTML = `<option value="">${escapar(primeraOpcion)}</option>` +
-    Object.keys(MATERIAS_ITSOEH).map(c => `<option value="${escapar(c)}">${escapar(c)}</option>`).join("");
+    Object.keys(MATERIAS_ITSOEH).filter(c => !propias || propias.includes(c)).map(c => `<option value="${escapar(c)}">${escapar(c)}</option>`).join("");
 }
 
 // Llena un <select> de materias según la carrera (y semestre) del grupo.

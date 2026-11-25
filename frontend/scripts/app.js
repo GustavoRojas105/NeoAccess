@@ -100,7 +100,10 @@ function checkAuth() {
   if (portalStudent) portalStudent.classList.add("hidden");
   if (portalCleaning) portalCleaning.classList.add("hidden");
 
-  if (rol === "administrador") {
+  document.body.classList.toggle("rol-jefe", rol === "jefe_carrera");
+  if (userRoleBadge && rol === "jefe_carrera") userRoleBadge.textContent = "JEFE DE CARRERA";
+
+  if (rol === "administrador" || rol === "jefe_carrera") {
     if (adminSidebar) adminSidebar.classList.remove("hidden");
     if (adminContent) adminContent.classList.remove("hidden");
     loadInitialData();
@@ -169,26 +172,32 @@ function logoutUser() {
 // -------------------------------------------------------------
 // VISTAS DE PORTALES POR ROL (Docente, Alumno, Limpieza)
 // -------------------------------------------------------------
+// Los portales vuelven a pedir sus datos cada 5 min (cambios del jefe de carrera, cierre de periodo...)
+let PORTAL_REFRESH = null;
+function programarRefrescoPortal(fn) {
+  if (PORTAL_REFRESH) clearInterval(PORTAL_REFRESH);
+  PORTAL_REFRESH = setInterval(fn, 5 * 60 * 1000);
+}
+function pintarPeriodo(periodo) {
+  document.querySelectorAll(".periodo-chip").forEach(el => {
+    el.textContent = periodo ? `Periodo ${periodo.nombre}` : "";
+    el.classList.toggle("hidden", !periodo);
+  });
+}
+
 async function loadTeacherPortalView() {
   try {
     const data = await apiFetch("/api/portal/teacher-data");
     document.getElementById("docente-portal-name").textContent = data.perfil.nombre;
     document.getElementById("docente-portal-clave").textContent = data.perfil.matricula_clave;
     document.getElementById("docente-portal-carrera").textContent = data.perfil.carrera || "Sin carrera asignada";
+    pintarPeriodo(data.periodo);
 
-    // Clases Asignadas
-    const clasesTbody = document.getElementById("table-portal-teacher-classes");
-    if (clasesTbody) {
-      clasesTbody.innerHTML = data.clases_asignadas.map(c => `
-        <tr class="hover:bg-slate-50 transition">
-          <td class="px-4 py-3 font-semibold text-slate-900">${esc(c.dia_semana)}</td>
-          <td class="px-4 py-3 font-mono text-xs font-bold text-slate-700">${esc(c.hora_inicio)} - ${esc(c.hora_fin)}</td>
-          <td class="px-4 py-3 font-medium text-slate-800">${esc(c.materia)}</td>
-          <td class="px-4 py-3"><span class="px-2 py-0.5 bg-slate-100 rounded text-xs font-bold">${esc(c.grupo_nombre || c.grupo_id)}</span></td>
-          <td class="px-4 py-3 text-slate-700">${esc(c.laboratorio_nombre)} <span class="text-xs text-slate-400">(${esc(c.edificio)})</span></td>
-        </tr>
-      `).join("");
-    }
+    renderPortalTimetable(data.clases_asignadas, {
+      gridId: "teacher-timetable", hoyId: "teacher-today", rol: "docente",
+      rostro: data.tiene_rostro_registrado, ahora: data.ahora, tolerancia: data.tolerancia_min,
+    });
+    programarRefrescoPortal(loadTeacherPortalView);
 
     // Pase de Lista de Alumnos en Vivo (RF-06)
     const listadoTbody = document.getElementById("table-portal-teacher-attendance");
@@ -224,7 +233,9 @@ async function loadStudentPortalView() {
     const data = await apiFetch("/api/portal/student-data");
     document.getElementById("alumno-portal-name").textContent = data.perfil.nombre;
     document.getElementById("alumno-portal-matricula").textContent = data.perfil.matricula_clave;
-    document.getElementById("alumno-portal-grupo").textContent = data.perfil.grupo_nombre || data.perfil.grupo_id || "N/A";
+    document.getElementById("alumno-portal-grupo").textContent = data.perfil.grupo_clave
+      ? `${data.perfil.grupo_clave}${data.perfil.grupo_nombre ? " • " + data.perfil.grupo_nombre : ""}`
+      : "Sin grupo en este periodo";
     document.getElementById("alumno-portal-carrera").textContent = data.perfil.carrera || "Sin carrera asignada";
 
     const faceBadge = document.getElementById("alumno-portal-face-status");
@@ -234,19 +245,14 @@ async function loadStudentPortalView() {
         : `<span class="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded-full text-xs font-semibold"><span class="status-dot intermittent"></span> Sin Vector Registrado</span>`;
     }
 
-    // Horarios autorizados de clase
-    const horariosTbody = document.getElementById("table-portal-student-schedules");
-    if (horariosTbody) {
-      horariosTbody.innerHTML = data.horarios_autorizados.map(h => `
-        <tr class="hover:bg-slate-50 transition">
-          <td class="px-4 py-3 font-semibold text-slate-900">${esc(h.dia_semana)}</td>
-          <td class="px-4 py-3 font-mono text-xs font-bold text-slate-700">${esc(h.hora_inicio)} - ${esc(h.hora_fin)}</td>
-          <td class="px-4 py-3 font-medium text-slate-800">${esc(h.materia)}</td>
-          <td class="px-4 py-3 text-slate-700">${esc(h.laboratorio_nombre)} <span class="text-xs text-slate-400">(${esc(h.edificio)})</span></td>
-          <td class="px-4 py-3 text-slate-600">${esc(h.docente_nombre || 'Docente Titular')}</td>
-        </tr>
-      `).join("");
-    }
+    pintarPeriodo(data.periodo);
+    const mc = document.getElementById("alumno-portal-matricula-card");
+    if (mc) mc.textContent = data.perfil.matricula_clave;
+    renderPortalTimetable(data.horarios_autorizados, {
+      gridId: "student-timetable", hoyId: "student-today", rol: "alumno",
+      rostro: data.tiene_rostro_registrado, ahora: data.ahora, tolerancia: data.tolerancia_min,
+    });
+    programarRefrescoPortal(loadStudentPortalView);
 
     // Historial de asistencias
     const histTbody = document.getElementById("table-portal-student-history");
@@ -334,7 +340,9 @@ function setupNavigation() {
 
 function switchSection(sectionId) {
   STATE.currentSection = sectionId;
-  const sections = ["metrics", "devices", "laboratories", "schedules", "students", "teachers", "reports", "admins"];
+  const sections = ["metrics", "devices", "laboratories", "schedules", "students", "teachers", "reports", "periodos", "admins"];
+  if (esJefe() && !["schedules", "teachers", "reports"].includes(sectionId)) sectionId = "schedules";
+  STATE.currentSection = sectionId;
 
   sections.forEach(s => {
     const secEl = document.getElementById(`section-${s}`);
@@ -365,9 +373,10 @@ function switchSection(sectionId) {
     laboratories: { title: "Gestión de Laboratorios", sub: "Edificio 6 y STEM" },
     schedules: { title: "Horarios y Grupos", sub: "Validación de Acceso" },
     students: { title: "Control de Alumnos", sub: "Pase de Lista Digital" },
-    teachers: { title: "Maestros y Personal", sub: "Docencia y Limpieza" },
+    teachers: esJefe() ? { title: "Docentes", sub: "Alta y baja de docentes de su carrera" } : { title: "Maestros y Personal", sub: "Docencia y Limpieza" },
     reports: { title: "Generación de Reportes", sub: "Descarga de Evidencias" },
-    admins: { title: "Administradores", sub: "Cuentas con acceso al Dashboard" }
+    periodos: { title: "Periodos e Histórico", sub: "Semestres Ene–Jun y Ago–Dic" },
+    admins: { title: "Administradores", sub: "Administradores y jefes de carrera" }
   };
   if (titles[sectionId]) {
     document.getElementById("page-title").textContent = titles[sectionId].title;
@@ -385,7 +394,8 @@ function refreshActiveSection() {
   else if (STATE.currentSection === "students") loadStudentsData();
   else if (STATE.currentSection === "teachers") loadTeachersData();
   else if (STATE.currentSection === "reports") loadReportsDropdowns();
-  else if (STATE.currentSection === "admins") loadAdminsData();
+  else if (STATE.currentSection === "periodos") loadPeriodosData();
+  else if (STATE.currentSection === "admins") { loadAdminsData(); loadJefesData(); }
 }
 
 // -------------------------------------------------------------
@@ -461,14 +471,34 @@ async function setMaintenance(activo) {
   }
 }
 
+function esJefe() {
+  return !!(STATE.user && STATE.user.rol === "jefe_carrera");
+}
+
+async function cargarPeriodoActivo() {
+  try {
+    const data = await apiFetch("/api/periodos");
+    STATE.periodos = data.periodos;
+    pintarPeriodo(data.periodos.find(p => p.estado === "activo"));
+  } catch (err) {
+    console.error("No se pudo consultar el periodo:", err);
+  }
+}
+
 async function loadInitialData() {
-  loadMaintenanceState();
+  cargarPeriodoActivo();
+  if (esJefe()) {
+    const ul = document.getElementById("jefe-carreras-list");
+    if (ul) ul.innerHTML = (STATE.user.carreras || []).map(c => `<li class="truncate" title="${esc(c)}">• ${esc(c)}</li>`).join("");
+  } else {
+    loadMaintenanceState();
+  }
   try {
     const labs = await apiFetch("/api/labs");
     STATE.laboratorios = labs;
     populateLabDropdowns(labs);
-    switchSection("metrics");
-    updateGlobalDeviceStatus();
+    switchSection(esJefe() ? "schedules" : "metrics");
+    if (!esJefe()) updateGlobalDeviceStatus();
   } catch (err) {
     console.error("Error al cargar datos iniciales:", err);
   }

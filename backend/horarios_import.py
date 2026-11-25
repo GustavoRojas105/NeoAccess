@@ -79,16 +79,16 @@ def _clave(valor) -> str:
     return v.split(SEPARADOR)[0].split(" - ")[0].strip() if v else ""
 
 
-def _buscar(cursor, sql_id, sql_nombre, valor):
+def _buscar(cursor, sql_id, sql_nombre, valor, extra=()):
     """Busca por clave exacta; si no, por nombre completo (sin importar acentos/mayúsculas)."""
     clave = _clave(valor)
     if not clave:
         return None
-    fila = cursor.execute(sql_id, (clave, clave)).fetchone()
+    fila = cursor.execute(sql_id, (clave, clave, *extra)).fetchone()
     if fila:
         return fila
     texto = str(valor).split(SEPARADOR)[-1]
-    for f in cursor.execute(sql_nombre).fetchall():
+    for f in cursor.execute(sql_nombre, extra).fetchall():
         if _norm(f["nombre"]) == _norm(texto):
             return f
     return None
@@ -98,10 +98,13 @@ def _se_traslapan(a_ini, a_fin, b_ini, b_fin) -> bool:
     return a_ini < b_fin and b_ini < a_fin
 
 
-def validar_horario(datos: dict, cursor, ocupados: list, materias: dict = None):
+def validar_horario(datos: dict, cursor, ocupados: list, materias: dict = None,
+                    periodo_id: str = None, carreras: list = None):
     """
     datos: dia, hora_inicio, hora_fin, laboratorio, grupo, docente, materia (texto libre).
     ocupados: horarios ya aceptados en este lote [(lab, dia, ini, fin, grupo, docente)].
+    periodo_id: periodo activo (grupos y choques solo de ese periodo).
+    carreras: si se indica (jefe de carrera), el grupo debe ser de una de esas carreras.
     Devuelve (horario listo para insertar | None, [errores]).
     """
     materias = materias or cargar_materias()
@@ -131,12 +134,17 @@ def validar_horario(datos: dict, cursor, ocupados: list, materias: dict = None):
     elif not lab["activo"]:
         errores.append(f"El laboratorio {lab['id']} está desactivado.")
 
-    grupo = _buscar(cursor, "SELECT id, nombre, carrera FROM grupos WHERE upper(id) = upper(?) OR ? = ''",
-                    "SELECT id, nombre, carrera FROM grupos", datos.get("grupo"))
+    grupo = _buscar(cursor,
+                    "SELECT id, nombre, carrera FROM grupos WHERE (upper(id) = upper(?) OR ? = '') AND periodo_id IS ?",
+                    "SELECT id, nombre, carrera FROM grupos WHERE periodo_id IS ?",
+                    datos.get("grupo"), extra=(periodo_id,))
     if not datos.get("grupo"):
         errores.append("Falta el grupo.")
     elif not grupo:
-        errores.append(f"El grupo '{_clave(datos.get('grupo'))}' no existe.")
+        errores.append(f"El grupo '{_clave(datos.get('grupo'))}' no existe en el periodo actual.")
+    elif carreras is not None and grupo["carrera"] not in carreras:
+        errores.append(f"El grupo {grupo['id']} es de {grupo['carrera']}, que no está a su cargo.")
+        grupo = None
 
     docente = _buscar(
         cursor,
@@ -167,8 +175,8 @@ def validar_horario(datos: dict, cursor, ocupados: list, materias: dict = None):
     # Choques de horario: mismo laboratorio, mismo grupo o mismo docente a la misma hora
     if not errores:
         existentes = cursor.execute(
-            "SELECT laboratorio_id, dia_semana, hora_inicio, hora_fin, grupo_id, docente_id FROM horarios WHERE dia_semana = ?",
-            (dia,)).fetchall()
+            "SELECT laboratorio_id, dia_semana, hora_inicio, hora_fin, grupo_id, docente_id FROM horarios "
+            "WHERE dia_semana = ? AND periodo_id IS ?", (dia, periodo_id)).fetchall()
         candidatos = [tuple(r) for r in existentes] + [o for o in ocupados if o[1] == dia]
         for (o_lab, _d, o_ini, o_fin, o_grupo, o_doc) in candidatos:
             if not _se_traslapan(ini, fin, o_ini, o_fin):
@@ -185,7 +193,7 @@ def validar_horario(datos: dict, cursor, ocupados: list, materias: dict = None):
     if errores:
         return None, errores
     return {
-        "grupo_id": grupo["id"], "laboratorio_id": lab["id"], "docente_id": docente["id"],
+        "grupo_id": grupo["id"], "laboratorio_id": lab["id"], "docente_id": docente["id"], "periodo_id": periodo_id,
         "materia": materia, "dia_semana": dia, "hora_inicio": ini, "hora_fin": fin,
         # Para mostrar en la vista previa
         "laboratorio_nombre": lab["nombre"], "grupo_nombre": grupo["nombre"], "docente_nombre": docente["nombre"],
@@ -260,7 +268,7 @@ def leer_archivo(nombre: str, contenido: bytes):
 
 # ───────────────────────── Plantilla de Excel ─────────────────────────
 
-def generar_plantilla(cursor) -> bytes:
+def generar_plantilla(cursor, periodo_id: str = None, carreras: list = None, periodo_nombre: str = "") -> bytes:
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from openpyxl.worksheet.datavalidation import DataValidation
@@ -269,10 +277,12 @@ def generar_plantilla(cursor) -> bytes:
     labs = [f"{r['id']}{SEPARADOR}{r['nombre']}" for r in cursor.execute(
         "SELECT id, nombre FROM laboratorios WHERE activo = 1 ORDER BY id")]
     grupos = [f"{r['id']}{SEPARADOR}{r['nombre']}" for r in cursor.execute(
-        "SELECT id, nombre FROM grupos ORDER BY carrera, semestre, id")]
+        "SELECT id, nombre, carrera FROM grupos WHERE periodo_id IS ? ORDER BY carrera, semestre, id", (periodo_id,))
+        if carreras is None or r["carrera"] in carreras]
     docentes = [f"{r['id']}{SEPARADOR}{r['nombre_completo']}" for r in cursor.execute(
         "SELECT id, nombre_completo FROM usuarios WHERE tipo = 'docente' AND estado = 'activo' ORDER BY nombre_completo")]
-    materias = sorted({m for lista in cargar_materias().values() for m in lista}, key=_norm)
+    catalogo = cargar_materias()
+    materias = sorted({m for c, lista in catalogo.items() if carreras is None or c in carreras for m in lista}, key=_norm)
     horas = [f"{h:02d}:{m:02d}" for h in range(6, 23) for m in (0, 30) if f"{h:02d}:{m:02d}" <= HORA_MAX]
 
     wb = Workbook()
@@ -334,7 +344,7 @@ def generar_plantilla(cursor) -> bytes:
     ins = wb.create_sheet("Instrucciones")
     ins.column_dimensions["A"].width = 110
     lineas = [
-        ("Cómo llenar la plantilla de horarios (NeoAccess - ITSOEH)", True),
+        ("Cómo llenar la plantilla de horarios (NeoAccess - ITSOEH)" + (f" — Periodo {periodo_nombre}" if periodo_nombre else ""), True),
         ("", False),
         ("1. Llene una fila por cada clase en la hoja «Horarios». Todas las columnas son obligatorias.", False),
         ("2. Use las listas desplegables: Día, Laboratorio, Grupo, Docente y Materia solo aceptan valores registrados en el sistema.", False),

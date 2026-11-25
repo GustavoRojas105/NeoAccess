@@ -67,6 +67,22 @@ class GroupCreate(BaseModel):
     carrera: str
     semestre: int
 
+class GroupUpdate(BaseModel):
+    nombre: str = Field(..., max_length=120)
+    carrera: str = Field(..., max_length=120)
+    semestre: int
+
+class JefeCreate(BaseModel):
+    """Alta de un jefe de carrera (lo crea el administrador)."""
+    username: str = Field(..., min_length=3, max_length=40, pattern=r"^[A-Za-z0-9._-]+$")
+    nombre: str = Field(..., min_length=3, max_length=120)
+    email: Optional[str] = Field(None, max_length=120)
+    password: str = Field(..., min_length=8, max_length=128)
+    carreras: List[str] = Field(..., min_length=1, max_length=20)
+
+class JefeCarreras(BaseModel):
+    carreras: List[str] = Field(..., min_length=1, max_length=20)
+
 class UserCreate(BaseModel):
     id: str
     nombre_completo: str

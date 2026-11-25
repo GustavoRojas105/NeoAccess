@@ -4,7 +4,44 @@
  * Permite filtrar por salón o todos, periodo, resultado, generar reporte y descargar CSV
  */
 
+async function loadReportPeriodos() {
+  const sel = document.getElementById("report-filter-periodo");
+  if (!sel) return;
+  try {
+    const { periodos } = await apiFetch("/api/periodos");
+    const actual = sel.value;
+    sel.innerHTML = `<option value="todos">Todos los periodos</option>` + periodos.map(p =>
+      `<option value="${esc(p.id)}">${esc(p.nombre)}${p.estado === "activo" ? " (activo)" : ""}</option>`).join("");
+    if (actual && [...sel.options].some(o => o.value === actual)) sel.value = actual;
+  } catch (err) {
+    console.error("No se pudieron cargar los periodos:", err);
+  }
+}
+
+// Desde "Periodos e Histórico": abrir Reportes ya filtrado por un periodo (sin fechas)
+async function abrirReportePeriodo(periodoId) {
+  switchSection("reports");
+  await loadReportPeriodos();
+  document.getElementById("report-filter-periodo").value = periodoId;
+  document.getElementById("report-filter-start").value = "";
+  document.getElementById("report-filter-end").value = "";
+  generateReport();
+}
+
+function reportParams() {
+  const v = id => document.getElementById(id)?.value || "";
+  const params = new URLSearchParams();
+  if ((v("report-filter-lab") || "todos") !== "todos") params.append("laboratorio_id", v("report-filter-lab"));
+  if (v("report-filter-start")) params.append("fecha_inicio", v("report-filter-start"));
+  if (v("report-filter-end")) params.append("fecha_fin", v("report-filter-end"));
+  if ((v("report-filter-result") || "todos") !== "todos") params.append("resultado", v("report-filter-result"));
+  if ((v("report-filter-periodo") || "todos") !== "todos") params.append("periodo_id", v("report-filter-periodo"));
+  if (v("report-filter-q").trim()) params.append("q", v("report-filter-q").trim());
+  return params;
+}
+
 function loadReportsDropdowns() {
+  loadReportPeriodos();
   const startInput = document.getElementById("report-filter-start");
   const endInput = document.getElementById("report-filter-end");
 
@@ -20,16 +57,7 @@ function loadReportsDropdowns() {
 }
 
 async function generateReport() {
-  const labId = document.getElementById("report-filter-lab")?.value || "todos";
-  const start = document.getElementById("report-filter-start")?.value || "";
-  const end = document.getElementById("report-filter-end")?.value || "";
-  const result = document.getElementById("report-filter-result")?.value || "todos";
-
-  const params = new URLSearchParams();
-  if (labId !== "todos") params.append("laboratorio_id", labId);
-  if (start) params.append("fecha_inicio", start);
-  if (end) params.append("fecha_fin", end);
-  if (result !== "todos") params.append("resultado", result);
+  const params = reportParams();
 
   try {
     const data = await apiFetch(`/api/reports/data?${params.toString()}`);
@@ -44,10 +72,10 @@ function renderReportResults(rows) {
   const countEl = document.getElementById("report-results-count");
   if (!tbody) return;
 
-  countEl.textContent = `${rows.length} registros encontrados en el periodo`;
+  countEl.textContent = `${rows.length} registros encontrados`;
 
   if (rows.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-slate-400">No se encontraron accesos con los criterios indicados</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" class="p-6 text-center text-slate-400">No se encontraron accesos con los criterios indicados</td></tr>`;
     return;
   }
 
@@ -67,22 +95,14 @@ function renderReportResults(rows) {
         </td>
         <td class="px-4 py-2.5 text-slate-600 text-[11px]">${esc(r.motivo)}</td>
         <td class="px-4 py-2.5 text-[10px] text-slate-400 font-mono">${r.sincronizado_offline ? 'Sí (offline)' : 'No'}</td>
+        <td class="px-4 py-2.5 text-[10px] text-slate-500 font-mono">${esc(r.periodo_id || '—')}</td>
       </tr>
     `;
   }).join("");
 }
 
 function downloadReportCSV() {
-  const labId = document.getElementById("report-filter-lab")?.value || "todos";
-  const start = document.getElementById("report-filter-start")?.value || "";
-  const end = document.getElementById("report-filter-end")?.value || "";
-  const result = document.getElementById("report-filter-result")?.value || "todos";
-
-  const params = new URLSearchParams();
-  if (labId !== "todos") params.append("laboratorio_id", labId);
-  if (start) params.append("fecha_inicio", start);
-  if (end) params.append("fecha_fin", end);
-  if (result !== "todos") params.append("resultado", result);
+  const params = reportParams();
 
   fetch(`/api/reports/export-csv?${params.toString()}`, {
     headers: { "Authorization": `Bearer ${STATE.token}` }
@@ -107,5 +127,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.getElementById("btn-export-csv")?.addEventListener("click", () => {
     downloadReportCSV();
+  });
+
+  document.getElementById("report-filter-q")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") generateReport();
   });
 });

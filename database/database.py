@@ -5,6 +5,7 @@ Ubicación: C:\\Users\\gr321\\Desktop\\NeoAccess\\database\\database.py
 
 import sqlite3
 import os
+from datetime import datetime
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "neoaccess.db")
 
@@ -223,8 +224,104 @@ def init_db():
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_comandos_pendientes ON comandos_dispositivo (dispositivo_id, estado);")
 
+    # 12. Periodos escolares (Ene-Jun / Ago-Dic). Solo uno 'activo'; los 'cerrado' quedan como histórico.
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS periodos (
+        id TEXT PRIMARY KEY,                -- '2026-2' (1 = Ene-Jun, 2 = Ago-Dic)
+        nombre TEXT NOT NULL,               -- 'Ago-Dic 2026'
+        fecha_inicio TEXT NOT NULL,
+        fecha_fin TEXT NOT NULL,
+        estado TEXT NOT NULL DEFAULT 'activo',
+        fecha_cierre TEXT,
+        cerrado_por TEXT
+    );
+    """)
+
+    # 13. Histórico de inscripciones (foto al cerrar cada periodo; sin FK para que nunca se pierda)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS inscripciones (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        periodo_id TEXT NOT NULL,
+        usuario_id TEXT NOT NULL,
+        nombre_completo TEXT,
+        matricula_clave TEXT,
+        carrera TEXT,
+        grupo_id TEXT,
+        grupo_clave TEXT,
+        grupo_nombre TEXT,
+        semestre INTEGER
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_inscripciones_usuario ON inscripciones (usuario_id);")
+
+    # 14. Jefes de carrera (cuenta aparte, una o más carreras)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS jefes_carrera (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        nombre TEXT NOT NULL,
+        email TEXT,
+        activo INTEGER DEFAULT 1,
+        fecha_creacion TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS jefe_carreras (
+        jefe_id INTEGER NOT NULL,
+        carrera TEXT NOT NULL,
+        PRIMARY KEY (jefe_id, carrera),
+        FOREIGN KEY (jefe_id) REFERENCES jefes_carrera (id) ON DELETE CASCADE
+    );
+    """)
+
+    # Columnas de periodo (migración de bases existentes)
+    def _columnas(tabla):
+        return {r[1] for r in cursor.execute(f"PRAGMA table_info({tabla});").fetchall()}
+    if "periodo_id" not in _columnas("grupos"):
+        cursor.execute("ALTER TABLE grupos ADD COLUMN periodo_id TEXT;")
+    if "clave" not in _columnas("grupos"):
+        cursor.execute("ALTER TABLE grupos ADD COLUMN clave TEXT;")   # clave visible (el id se archiva al cerrar)
+    if "periodo_id" not in _columnas("horarios"):
+        cursor.execute("ALTER TABLE horarios ADD COLUMN periodo_id TEXT;")
+    if "periodo_id" not in _columnas("registros_acceso"):
+        cursor.execute("ALTER TABLE registros_acceso ADD COLUMN periodo_id TEXT;")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_accesos_periodo ON registros_acceso (periodo_id);")
+
+    # Periodo inicial según la fecha de hoy, y asignar lo existente al periodo activo
+    if not cursor.execute("SELECT 1 FROM periodos WHERE estado = 'activo'").fetchone():
+        p = periodo_para_fecha(datetime.now())
+        cursor.execute("INSERT OR IGNORE INTO periodos (id, nombre, fecha_inicio, fecha_fin, estado) VALUES (?, ?, ?, ?, 'activo')",
+                       (p["id"], p["nombre"], p["fecha_inicio"], p["fecha_fin"]))
+        cursor.execute("UPDATE periodos SET estado = 'activo' WHERE id = ?", (p["id"],))
+    activo = cursor.execute("SELECT id FROM periodos WHERE estado = 'activo'").fetchone()[0]
+    cursor.execute("UPDATE grupos SET periodo_id = ? WHERE periodo_id IS NULL", (activo,))
+    cursor.execute("UPDATE grupos SET clave = id WHERE clave IS NULL")
+    cursor.execute("UPDATE horarios SET periodo_id = ? WHERE periodo_id IS NULL", (activo,))
+    cursor.execute("UPDATE registros_acceso SET periodo_id = ? WHERE periodo_id IS NULL", (activo,))
+
     conn.commit()
     conn.close()
+
+
+# ─────────────── Periodos escolares (Ene-Jun / Ago-Dic) ───────────────
+def periodo_para_fecha(fecha) -> dict:
+    """Ene-Jun = '{año}-1'; Jul-Dic = '{año}-2' (julio se cuenta como vacaciones previas a Ago-Dic)."""
+    if fecha.month <= 6:
+        return {"id": f"{fecha.year}-1", "nombre": f"Ene-Jun {fecha.year}",
+                "fecha_inicio": f"{fecha.year}-01-01", "fecha_fin": f"{fecha.year}-06-30"}
+    return {"id": f"{fecha.year}-2", "nombre": f"Ago-Dic {fecha.year}",
+            "fecha_inicio": f"{fecha.year}-08-01", "fecha_fin": f"{fecha.year}-12-31"}
+
+
+def periodo_siguiente(periodo_id: str) -> dict:
+    anio, n = periodo_id.split("-")
+    anio = int(anio)
+    if n == "1":
+        return {"id": f"{anio}-2", "nombre": f"Ago-Dic {anio}",
+                "fecha_inicio": f"{anio}-08-01", "fecha_fin": f"{anio}-12-31"}
+    return {"id": f"{anio + 1}-1", "nombre": f"Ene-Jun {anio + 1}",
+            "fecha_inicio": f"{anio + 1}-01-01", "fecha_fin": f"{anio + 1}-06-30"}
 
 if __name__ == "__main__":
     init_db()

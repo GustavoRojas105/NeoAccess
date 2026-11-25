@@ -21,7 +21,7 @@ NeoAccess/
 │   └── models.py                  # Modelos Pydantic de validación
 │
 ├── database/                      # Base de datos SQLite
-│   ├── database.py                # Esquema (13 tablas) y conexión
+│   ├── database.py                # Esquema (17 tablas), periodos escolares y conexión
 │   ├── seed_data.py               # Datos de prueba del ITSOEH (crea neoaccess.db)
 │   ├── update_passwords.py        # Asigna contraseñas de prueba por rol
 │   └── neoaccess.db               # (se genera solo; no está en Git)
@@ -32,7 +32,9 @@ NeoAccess/
 │   └── scripts/                   # app.js, laboratories.js, devices.js, metrics.js,
 │                                  # schedules.js, users.js (captura facial), reports.js,
 │                                  # admins.js, dialogs.js, materias.js, eliminar.js,
-│                                  # importar_horarios.js, materias_itsoeh.json
+│                                  # importar_horarios.js, materias_itsoeh.json,
+│                                  # horario_portal.js (horario semanal de alumnos y docentes),
+│                                  # periodos.js (periodos, histórico y jefes de carrera)
 │
 ├── raspberry_pi/                  # Paquete para la Raspberry Pi Zero W de cada puerta
 │   ├── rpi_main.py                # Nodo de puerta: cámara + reconocimiento + relé GPIO 17
@@ -146,6 +148,30 @@ Desde el Dashboard → menú lateral → **Administradores**:
 - **Agregar administrador:** nombre, usuario, correo (opcional) y contraseña de mínimo 8 caracteres. El usuario no puede repetirse ni coincidir con la matrícula o clave de un alumno o docente.
 - **Desactivar / Reactivar:** un administrador desactivado sale del sistema de inmediato. Nadie puede desactivarse a sí mismo y siempre debe quedar al menos uno activo.
 - **Cambiar mi contraseña:** pide la contraseña actual y cierra las demás sesiones abiertas de esa cuenta.
+
+## 🎓 Jefes de Carrera
+
+El administrador los crea en **Administradores → Jefes de carrera** y les asigna **una o varias carreras**. Entran con su usuario en el mismo login y ven un Dashboard reducido, **solo con datos de sus carreras**:
+
+- **Horarios y Grupos:** crear y editar grupos, descargar la plantilla de Excel (ya filtrada a sus grupos y materias), importar horarios o agregarlos uno por uno.
+- **Docentes:** registrar docentes de su carrera y **darlos de baja** (o reactivarlos). No pueden eliminar definitivamente: el docente queda en el histórico.
+- **Reportes:** accesos de sus carreras, con búsqueda por nombre/matrícula y por periodo.
+
+No ven alumnos, dispositivos, laboratorios, métricas, administradores ni el modo mantenimiento. El registro de rostros lo hace el administrador. Si se les cambian las carreras o se les desactiva, su sesión se cierra en ese momento.
+
+## 🗓️ Periodos Escolares e Histórico
+
+El sistema trabaja por semestres **Ene–Jun** y **Ago–Dic**. Grupos, horarios y accesos quedan ligados al periodo en que se crearon.
+
+En **Periodos e Histórico** (solo administrador):
+
+- **Cerrar periodo y abrir el siguiente** (pide confirmar dos veces): nada se borra. Se guarda qué alumno estaba en qué grupo, los grupos y horarios pasan al histórico (solo lectura) y las puertas dejan de usarlos. Los alumnos quedan sin grupo hasta que se les asigne uno del nuevo periodo, y los jefes de carrera suben los horarios nuevos.
+- **Consultar** cualquier periodo: sus grupos, horarios y accesos (en Reportes, filtrando por periodo y buscando por nombre o matrícula).
+- En el detalle de cada alumno aparece su **historial académico** (grupo de cada periodo).
+
+## 🗓️ Horario en los Portales de Alumnos y Docentes
+
+Alumnos y docentes ven su **horario semanal** (cuadrícula en computadora, lista por día en celular) y, debajo, **Mi acceso de hoy**: cada clase indica *"Podrás entrar a las 06:50"*, *"Acceso permitido ahora"* o *"Terminada"* y cambia sola con la hora del servidor. La puerta abre **10 minutos antes** de la clase y hasta que termina (valor `TOLERANCIA_ENTRADA_MIN` en `backend/app.py`; la Raspberry lo recibe al sincronizar). Si la persona no tiene su rostro registrado, se le avisa.
 
 ## 📅 Importar Horarios desde Excel
 

@@ -203,3 +203,7 @@ body {
 @keyframes naFade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes naFadeOut { to { opacity: 0; } }
 @keyframes naPop { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
+
+/* ── Visibilidad por rol (jefe de carrera usa el mismo Dashboard reducido) ── */
+body.rol-jefe .jefe-hide { display: none !important; }
+body:not(.rol-jefe) .jefe-only { display: none !important; }

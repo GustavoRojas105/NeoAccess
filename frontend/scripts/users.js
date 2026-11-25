@@ -154,6 +154,7 @@ async function loadTeachersData() {
     const docentes = await apiFetch("/api/users?tipo=docente");
     renderDocentesTable(docentes);
 
+    if (esJefe()) return;   // el jefe de carrera solo administra docentes
     const personal = await apiFetch("/api/users?tipo=personal_limpieza");
     renderPersonalLimpieza(personal);
 
@@ -168,6 +169,10 @@ function renderDocentesTable(docentes) {
   const tbody = document.getElementById("table-docentes");
   if (!tbody) return;
 
+  if (!docentes.length) {
+    tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-slate-400">No hay docentes registrados.</td></tr>`;
+    return;
+  }
   tbody.innerHTML = docentes.map(d => {
     const isActivo = d.estado === "activo";
     const hasFace = d.tiene_rostro === 1;
@@ -205,7 +210,7 @@ function renderDocentesTable(docentes) {
             </button>
           ` : ''}
           <button onclick="openFaceCaptureModal(${escJsArg(d.id)}, ${escJsArg(d.nombre_completo)})"
-            class="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition" title="Registrar Rostro">
+            class="jefe-hide p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition" title="Registrar Rostro">
             <i data-lucide="scan-face" class="w-4 h-4"></i>
           </button>
           <button onclick="viewUserDetails(${escJsArg(d.id)})"
@@ -280,6 +285,23 @@ async function viewUserDetails(userId) {
         `;
       }).join("");
     }
+
+    // Grupos en los que estuvo en periodos anteriores
+    let insc = document.getElementById("user-details-inscripciones");
+    if (!insc) {
+      insc = document.createElement("div");
+      insc.id = "user-details-inscripciones";
+      insc.className = "text-xs";
+      const tabla = tbody.closest("table");
+      const bloque = tabla.parentElement.classList.contains("overflow-x-auto") || tabla.parentElement.classList.contains("overflow-y-auto")
+        ? tabla.parentElement : tabla;
+      bloque.parentElement.insertBefore(insc, bloque);
+    }
+    const lista = res.inscripciones || [];
+    insc.innerHTML = lista.length ? `
+      <p class="font-bold text-slate-700 mb-1">Historial académico</p>
+      <div class="flex flex-wrap gap-1.5 mb-3">${lista.map(i =>
+        `<span class="px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-[11px]"><b>${esc(i.periodo_nombre || i.periodo_id)}</b>: ${esc(i.grupo_clave)}${i.semestre ? ` (${esc(i.semestre)}°)` : ""}</span>`).join("")}</div>` : "";
 
     openModal("modal-user-details");
   } catch (err) {
@@ -599,6 +621,7 @@ function staffStatusButtons(u) {
   const baja = u.estado === "activo"
     ? `<button onclick="toggleUserStatus(${escJsArg(u.id)})" class="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-slate-100 rounded transition" title="Dar de baja (bloquea el acceso, conserva el registro)"><i data-lucide="user-x" class="w-4 h-4"></i></button>`
     : `<button onclick="reactivateUser(${escJsArg(u.id)})" class="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded transition" title="Reactivar"><i data-lucide="user-check" class="w-4 h-4"></i></button>`;
+  if (esJefe()) return baja;   // el jefe solo da de baja: el registro queda en el histórico
   return baja + `<button onclick="deleteUserPermanent(${escJsArg(u.id)}, ${escJsArg(u.nombre_completo)})" class="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition" title="Eliminar definitivamente"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`;
 }
 
@@ -644,6 +667,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.getElementById("btn-modal-add-staff")?.addEventListener("click", () => {
     document.getElementById("form-add-staff")?.reset();
+    const tipoSel = document.getElementById("staff-new-type");
+    const carreraSel = document.getElementById("staff-new-career");
+    // El jefe solo registra docentes de sus carreras
+    tipoSel.querySelector('option[value="personal_limpieza"]').hidden = esJefe();
+    tipoSel.value = "docente";
+    tipoSel.disabled = esJefe();
+    carreraSel.required = esJefe();
+    fillCareerSelect(carreraSel, esJefe() ? "Seleccione la carrera..." : "Sin carrera (área administrativa)").then(() => {
+      if (esJefe() && (STATE.user.carreras || []).length === 1) carreraSel.value = STATE.user.carreras[0];
+    });
     openModal("modal-add-staff");
   });
 
@@ -665,6 +698,10 @@ document.addEventListener("DOMContentLoaded", () => {
       closeModal("modal-add-staff");
       e.target.reset();
       loadTeachersData();
+      if (esJefe()) {
+        showAlert(`${payload.nombre_completo} quedó registrado como docente.\n\nPara que la puerta lo reconozca, el administrador debe registrar su rostro.`, { type: "success", title: "Docente registrado" });
+        return;
+      }
       if (await showConfirm(`${payload.nombre_completo} registrado.\n\n¿Registrar ahora su rostro con la cámara?`,
         { title: "Personal registrado", type: "success", confirmText: "Registrar rostro", cancelText: "Después" })) {
         openFaceCaptureModal(payload.id, payload.nombre_completo);

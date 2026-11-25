@@ -41,9 +41,9 @@ function renderSchedulesTable(schedules) {
         </td>
         <td class="px-4 py-3">
           <span class="inline-block px-2 py-0.5 bg-slate-200 text-slate-800 rounded text-[11px] font-semibold">
-            ${esc(s.grupo_nombre || s.grupo_id || 'N/A')}
+            ${esc(s.grupo_clave || s.grupo_id || 'N/A')}
           </span>
-          <div class="text-[10px] text-slate-400 mt-0.5">${esc(s.laboratorio_carrera)}</div>
+          <div class="text-[10px] text-slate-400 mt-0.5">${esc(s.grupo_nombre || "")}${s.grupo_carrera ? " • " + esc(s.grupo_carrera) : ""}</div>
         </td>
         <td class="px-4 py-3 font-medium text-slate-800">${esc(s.materia)}</td>
         <td class="px-4 py-3 text-slate-700">
@@ -165,16 +165,20 @@ async function loadGroupsTable() {
         <td class="px-4 py-3 font-medium text-slate-900">${esc(g.nombre)}</td>
         <td class="px-4 py-3 text-slate-600">${esc(g.carrera)}</td>
         <td class="px-4 py-3 text-slate-600">${esc(g.semestre)}°</td>
-        <td class="px-4 py-3 text-right">
-          <button onclick="deleteGroup(${escJsArg(g.id)}, ${escJsArg(g.nombre)})" class="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition" title="Eliminar grupo">
+        <td class="px-4 py-3 text-slate-600">${esc(g.alumnos ?? 0)}</td>
+        <td class="px-4 py-3 text-right whitespace-nowrap">
+          <button onclick='editGroup(${JSON.stringify({ id: g.id, nombre: g.nombre, carrera: g.carrera, semestre: g.semestre }).replace(/'/g, "&#39;")})' class="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded transition" title="Editar grupo">
+            <i data-lucide="pencil" class="w-4 h-4"></i>
+          </button>
+          <button onclick="deleteGroup(${escJsArg(g.id)}, ${escJsArg(g.nombre)})" class="jefe-hide p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition" title="Eliminar grupo">
             <i data-lucide="trash-2" class="w-4 h-4"></i>
           </button>
         </td>
       </tr>`).join("")
-      : `<tr><td colspan="5" class="p-4 text-center text-slate-400">No hay grupos. Use "Agregar grupo" para crear el primero.</td></tr>`;
+      : `<tr><td colspan="6" class="p-4 text-center text-slate-400">No hay grupos en este periodo. Use "Agregar grupo" para crear el primero.</td></tr>`;
     if (window.lucide) lucide.createIcons();
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-400">No se pudieron cargar los grupos</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-400">No se pudieron cargar los grupos</td></tr>`;
   }
 }
 
@@ -185,12 +189,31 @@ async function deleteGroup(groupId, nombre) {
   }
 }
 
+let GRUPO_EDITANDO = null;
+
+async function abrirModalGrupo(grupo) {
+  GRUPO_EDITANDO = grupo ? grupo.id : null;
+  const form = document.getElementById("form-add-group");
+  form?.reset();
+  await fillCareerSelect(document.getElementById("group-new-career"), "Seleccione una carrera...");
+  const idInput = document.getElementById("group-new-id");
+  idInput.disabled = !!grupo;
+  document.getElementById("group-modal-title").textContent = grupo ? `Editar grupo ${grupo.id}` : "Agregar grupo";
+  document.getElementById("group-modal-submit").textContent = grupo ? "Guardar cambios" : "Crear grupo";
+  if (grupo) {
+    idInput.value = grupo.id;
+    document.getElementById("group-new-name").value = grupo.nombre;
+    document.getElementById("group-new-career").value = grupo.carrera;
+    document.getElementById("group-new-semester").value = String(grupo.semestre);
+  } else if (esJefe() && (STATE.user.carreras || []).length === 1) {
+    document.getElementById("group-new-career").value = STATE.user.carreras[0];
+  }
+  openModal("modal-add-group");
+}
+function editGroup(grupo) { abrirModalGrupo(grupo); }
+
 document.addEventListener("DOMContentLoaded", () => {
-  fillCareerSelect(document.getElementById("group-new-career"), "Seleccione una carrera...");
-  document.getElementById("btn-modal-add-group")?.addEventListener("click", () => {
-    document.getElementById("form-add-group")?.reset();
-    openModal("modal-add-group");
-  });
+  document.getElementById("btn-modal-add-group")?.addEventListener("click", () => abrirModalGrupo(null));
   document.getElementById("form-add-group")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const payload = {
@@ -200,13 +223,16 @@ document.addEventListener("DOMContentLoaded", () => {
       semestre: parseInt(document.getElementById("group-new-semester").value, 10),
     };
     try {
-      const res = await apiFetch("/api/groups", { method: "POST", body: payload });
+      const res = GRUPO_EDITANDO
+        ? await apiFetch(`/api/groups/${encodeURIComponent(GRUPO_EDITANDO)}`, { method: "PUT", body: payload })
+        : await apiFetch("/api/groups", { method: "POST", body: payload });
       closeModal("modal-add-group");
       e.target.reset();
       showAlert(res.message, { type: "success" });
       loadGroupsTable();
+      loadSchedulesData();
     } catch (err) {
-      showAlert("No se pudo crear el grupo: " + err.message, { type: "error" });
+      showAlert((GRUPO_EDITANDO ? "No se pudo guardar el grupo: " : "No se pudo crear el grupo: ") + err.message, { type: "error" });
     }
   });
 });

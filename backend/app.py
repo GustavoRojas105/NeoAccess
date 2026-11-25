@@ -24,7 +24,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, Fil
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
-from database.database import get_connection, init_db
+from database.database import get_connection, init_db, periodo_siguiente
 from backend.mailer import send_email
 from backend.horarios_import import validar_horario, leer_archivo, generar_plantilla, cargar_materias
 from backend.auth import (
@@ -33,7 +33,7 @@ from backend.auth import (
     login_locked_seconds, register_failed_login, reset_failed_logins
 )
 from backend.models import (
-    LoginRequest, RegisterRequest, AdminCreate, PasswordChange, ResendVerificationRequest, MaintenancePayload, LabCreate, LabUpdate, DeviceCreate, GroupCreate,
+    LoginRequest, RegisterRequest, AdminCreate, PasswordChange, JefeCreate, JefeCarreras, GroupUpdate, ResendVerificationRequest, MaintenancePayload, LabCreate, LabUpdate, DeviceCreate, GroupCreate,
     UserCreate, FacialMetadataCreate, FacialCapturePayload, ScheduleCreate,
     HeartbeatPayload, AccessAttemptPayload, CleaningPayload, CommandAckPayload
 )
@@ -132,6 +132,34 @@ def get_current_admin(authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=403, detail="Acceso denegado: se requieren privilegios de Administrador.")
     return session
 
+def get_current_staff(authorization: Optional[str] = Header(None)):
+    """Administrador o jefe de carrera. session['carreras'] = None (admin: todas) o lista de carreras."""
+    session = get_current_user(authorization)
+    if session.get("rol") == "administrador":
+        session.setdefault("carreras", None)
+        return session
+    if session.get("rol") == "jefe_carrera":
+        return session
+    raise HTTPException(status_code=403, detail="Acceso denegado para su rol.")
+
+def carreras_de(session: dict):
+    """None = sin restricción (administrador)."""
+    return None if session.get("rol") == "administrador" else list(session.get("carreras") or [])
+
+def exigir_carrera(session: dict, carrera: Optional[str], que: str = "este registro"):
+    permitidas = carreras_de(session)
+    if permitidas is not None and carrera not in permitidas:
+        raise HTTPException(status_code=403, detail=f"No puede modificar {que}: pertenece a una carrera que no está a su cargo.")
+
+# Minutos antes del inicio de la clase en que la puerta ya permite entrar
+TOLERANCIA_ENTRADA_MIN = 10
+
+def periodo_activo(cursor) -> dict:
+    row = cursor.execute("SELECT * FROM periodos WHERE estado = 'activo' ORDER BY id DESC LIMIT 1").fetchone()
+    if not row:
+        raise HTTPException(status_code=500, detail="No hay un periodo escolar activo.")
+    return dict(row)
+
 def verify_device_token(token_api: Optional[str], db_cursor, dispositivo_id: Optional[str] = None) -> dict:
     """
     Verifica la autenticidad de un dispositivo Raspberry Pi Zero W mediante su token.
@@ -191,7 +219,29 @@ def login(payload: LoginRequest, request: Request):
             }
         }
 
-    # 2. Intentar como Usuario Institucional (Docente, Alumno o Limpieza)
+    # 2. Intentar como Jefe de Carrera
+    cursor.execute("SELECT * FROM jefes_carrera WHERE lower(username) = lower(?) AND activo = 1", (payload.username.strip(),))
+    jefe = cursor.fetchone()
+    if jefe and verify_password(payload.password, jefe["password_hash"]):
+        state = get_maintenance_state()
+        if state["activo"]:
+            conn.close()
+            raise maintenance_exception(state)
+        carreras = [r["carrera"] for r in cursor.execute(
+            "SELECT carrera FROM jefe_carreras WHERE jefe_id = ? ORDER BY carrera", (jefe["id"],))]
+        if needs_rehash(jefe["password_hash"]):
+            cursor.execute("UPDATE jefes_carrera SET password_hash = ? WHERE id = ?",
+                           (hash_password(payload.password), jefe["id"]))
+            conn.commit()
+        conn.close()
+        reset_failed_logins(client_ip, payload.username)
+        token = create_session(jefe["username"], jefe["id"], jefe["nombre"], rol="jefe_carrera",
+                               extra_data={"email": jefe["email"], "carreras": carreras})
+        return {"success": True, "token": token, "admin": {
+            "id": jefe["id"], "username": jefe["username"], "nombre": jefe["nombre"],
+            "email": jefe["email"], "rol": "jefe_carrera", "carreras": carreras}}
+
+    # 3. Intentar como Usuario Institucional (Docente, Alumno o Limpieza)
     cursor.execute("""
     SELECT u.*, g.nombre as grupo_nombre 
     FROM usuarios u 
@@ -518,10 +568,17 @@ def verify_email(token: str = ""):
 
 
 @app.post("/api/users/{user_id}/approve-account")
-def approve_account(user_id: str, admin: dict = Depends(get_current_admin)):
-    """El administrador aprueba una cuenta de docente autorregistrada."""
+def approve_account(user_id: str, admin: dict = Depends(get_current_staff)):
+    """El administrador (o el jefe de su carrera) aprueba una cuenta de docente autorregistrada."""
     conn = get_connection()
     cursor = conn.cursor()
+    row = cursor.execute("SELECT carrera FROM usuarios WHERE id = ?", (user_id,)).fetchone()
+    if row:
+        try:
+            exigir_carrera(admin, row["carrera"], "esta cuenta")
+        except HTTPException:
+            conn.close()
+            raise
     cursor.execute("UPDATE usuarios SET cuenta_aprobada = 1 WHERE id = ?", (user_id,))
     conn.commit()
     ok = cursor.rowcount
@@ -539,7 +596,11 @@ def get_student_portal(user: dict = Depends(require_role("alumno"))):
     conn = get_connection()
     cursor = conn.cursor()
     user_id = user["user_id"]
-    grupo_id = user.get("grupo_id")
+    actual = cursor.execute("""
+        SELECT u.grupo_id, u.carrera, g.nombre AS grupo_nombre, g.clave AS grupo_clave, g.semestre
+        FROM usuarios u LEFT JOIN grupos g ON g.id = u.grupo_id WHERE u.id = ?""", (user_id,)).fetchone()
+    grupo_id = actual["grupo_id"] if actual else None
+    periodo = periodo_activo(cursor)
 
     # Horarios autorizados de su grupo
     cursor.execute("""
@@ -551,9 +612,9 @@ def get_student_portal(user: dict = Depends(require_role("alumno"))):
     FROM horarios h
     JOIN laboratorios l ON h.laboratorio_id = l.id
     LEFT JOIN usuarios u ON h.docente_id = u.id
-    WHERE h.grupo_id = ?
+    WHERE h.grupo_id = ? AND h.periodo_id = ?
     ORDER BY CASE h.dia_semana WHEN 'Lunes' THEN 1 WHEN 'Martes' THEN 2 WHEN 'Miércoles' THEN 3 WHEN 'Jueves' THEN 4 WHEN 'Viernes' THEN 5 ELSE 6 END, h.hora_inicio ASC;
-    """, (grupo_id,))
+    """, (grupo_id, periodo["id"]))
     horarios = [dict(r) for r in cursor.fetchall()]
 
     # Historial de accesos / pase de lista (RF-06)
@@ -575,8 +636,12 @@ def get_student_portal(user: dict = Depends(require_role("alumno"))):
     rostro = cursor.fetchone()
 
     conn.close()
+    perfil = {**user, **({k: actual[k] for k in actual.keys()} if actual else {})}
     return {
-        "perfil": user,
+        "perfil": perfil,
+        "periodo": {"id": periodo["id"], "nombre": periodo["nombre"]},
+        "ahora": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+        "tolerancia_min": TOLERANCIA_ENTRADA_MIN,
         "tiene_rostro_registrado": bool(rostro),
         "fecha_rostro": rostro["fecha_registro"] if rostro else None,
         "horarios_autorizados": horarios,
@@ -589,6 +654,7 @@ def get_teacher_portal(user: dict = Depends(require_role("docente"))):
     conn = get_connection()
     cursor = conn.cursor()
     teacher_id = user["user_id"]
+    periodo = periodo_activo(cursor)
 
     # Clases asignadas
     cursor.execute("""
@@ -596,13 +662,14 @@ def get_teacher_portal(user: dict = Depends(require_role("docente"))):
         h.*,
         l.nombre as laboratorio_nombre,
         l.edificio,
-        g.nombre as grupo_nombre
+        g.nombre as grupo_nombre,
+        g.clave as grupo_clave
     FROM horarios h
     JOIN laboratorios l ON h.laboratorio_id = l.id
     LEFT JOIN grupos g ON h.grupo_id = g.id
-    WHERE h.docente_id = ?
+    WHERE h.docente_id = ? AND h.periodo_id = ?
     ORDER BY CASE h.dia_semana WHEN 'Lunes' THEN 1 WHEN 'Martes' THEN 2 WHEN 'Miércoles' THEN 3 WHEN 'Jueves' THEN 4 WHEN 'Viernes' THEN 5 ELSE 6 END, h.hora_inicio ASC;
-    """, (teacher_id,))
+    """, (teacher_id, periodo["id"]))
     clases = [dict(r) for r in cursor.fetchall()]
 
     # Confirmaciones de clase del docente (RF-03)
@@ -639,9 +706,16 @@ def get_teacher_portal(user: dict = Depends(require_role("docente"))):
     """, (teacher_id,))
     alumnos_asistencias = [dict(r) for r in cursor.fetchall()]
 
+    cursor.execute("SELECT fecha_registro FROM metadatos_faciales WHERE usuario_id = ?", (teacher_id,))
+    rostro = cursor.fetchone()
+
     conn.close()
     return {
         "perfil": user,
+        "periodo": {"id": periodo["id"], "nombre": periodo["nombre"]},
+        "ahora": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+        "tolerancia_min": TOLERANCIA_ENTRADA_MIN,
+        "tiene_rostro_registrado": bool(rostro),
         "clases_asignadas": clases,
         "confirmaciones_docente": confirmaciones,
         "pase_de_lista_alumnos": alumnos_asistencias
@@ -676,7 +750,7 @@ def get_cleaning_portal(user: dict = Depends(require_role("personal_limpieza")))
 # GESTIÓN COMPLETA DE LABORATORIOS (Nuevo / Edición / Consulta)
 # -------------------------------------------------------------
 @app.get("/api/labs")
-def get_labs(todos: bool = False, admin: dict = Depends(get_current_admin)):
+def get_labs(todos: bool = False, admin: dict = Depends(get_current_staff)):
     """Obtiene la lista de laboratorios registrados."""
     conn = get_connection()
     cursor = conn.cursor()
@@ -1196,7 +1270,7 @@ def get_sync_offline_rules(
         h.hora_inicio,
         h.hora_fin
     FROM horarios h
-    WHERE h.laboratorio_id = ?;
+    WHERE h.laboratorio_id = ? AND h.periodo_id = (SELECT id FROM periodos WHERE estado = 'activo' LIMIT 1);
     """, (lab_id,))
     horarios_cache = [dict(r) for r in cursor.fetchall()]
 
@@ -1215,7 +1289,8 @@ def get_sync_offline_rules(
         "dispositivo_id": dispositivo_id,
         "laboratorio_id": lab_id,
         "usuarios": usuarios_cache,
-        "horarios": horarios_cache
+        "horarios": horarios_cache,
+        "tolerancia_min": TOLERANCIA_ENTRADA_MIN
     }
 
 @app.post("/api/iot/access-attempt")
@@ -1235,8 +1310,8 @@ def log_access_attempt(payload: AccessAttemptPayload):
             valid_user_id = user_row["id"]
 
     cursor.execute("""
-    INSERT INTO registros_acceso (usuario_id, dispositivo_id, laboratorio_id, fecha_hora, resultado, motivo, sincronizado_offline)
-    VALUES (?, ?, ?, ?, ?, ?, ?);
+    INSERT INTO registros_acceso (usuario_id, dispositivo_id, laboratorio_id, fecha_hora, resultado, motivo, sincronizado_offline, periodo_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, (SELECT id FROM periodos WHERE estado = 'activo' LIMIT 1));
     """, (
         valid_user_id,
         dev["id"],
@@ -1283,9 +1358,11 @@ def log_access_attempts_batch(payload: List[AccessAttemptPayload]):
         """, (valid_user_id, valid_user_id, dev["id"], p.fecha_hora))
         if not cursor.fetchone():
             cursor.execute("""
-            INSERT INTO registros_acceso (usuario_id, dispositivo_id, laboratorio_id, fecha_hora, resultado, motivo, sincronizado_offline)
-            VALUES (?, ?, ?, ?, ?, ?, 1);
-            """, (valid_user_id, dev["id"], dev["laboratorio_id"], p.fecha_hora, p.resultado, p.motivo))
+            INSERT INTO registros_acceso (usuario_id, dispositivo_id, laboratorio_id, fecha_hora, resultado, motivo, sincronizado_offline, periodo_id)
+            VALUES (?, ?, ?, ?, ?, ?, 1, COALESCE(
+                (SELECT id FROM periodos WHERE DATE(?) BETWEEN fecha_inicio AND fecha_fin LIMIT 1),
+                (SELECT id FROM periodos WHERE estado = 'activo' LIMIT 1)));
+            """, (valid_user_id, dev["id"], dev["laboratorio_id"], p.fecha_hora, p.resultado, p.motivo, p.fecha_hora))
             count += 1
 
     ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1340,8 +1417,8 @@ def ack_command(command_id: int, payload: CommandAckPayload, x_device_token: Opt
                    (estado, ahora, payload.detalle, command_id))
     if payload.exito and cmd["tipo"] == "abrir_puerta":
         cursor.execute("""
-        INSERT INTO registros_acceso (usuario_id, dispositivo_id, laboratorio_id, fecha_hora, resultado, motivo, sincronizado_offline)
-        VALUES (NULL, ?, ?, ?, 'permitido', ?, 0);
+        INSERT INTO registros_acceso (usuario_id, dispositivo_id, laboratorio_id, fecha_hora, resultado, motivo, sincronizado_offline, periodo_id)
+        VALUES (NULL, ?, ?, ?, 'permitido', ?, 0, (SELECT id FROM periodos WHERE estado = 'activo' LIMIT 1));
         """, (dev["id"], dev["laboratorio_id"], ahora,
               f"Apertura remota autorizada por {cmd['solicitado_por'] or 'Administrador'} desde Dashboard"))
     conn.commit()
@@ -1391,10 +1468,12 @@ def log_cleaning(payload: CleaningPayload):
 def get_schedules(
     laboratorio_id: Optional[str] = None,
     carrera: Optional[str] = None,
-    admin: dict = Depends(get_current_admin)
+    periodo_id: Optional[str] = None,
+    admin: dict = Depends(get_current_staff)
 ):
     conn = get_connection()
     cursor = conn.cursor()
+    periodo_id = periodo_id or periodo_activo(cursor)["id"]
 
     query = """
     SELECT 
@@ -1403,14 +1482,20 @@ def get_schedules(
         l.edificio,
         l.carrera as laboratorio_carrera,
         g.nombre as grupo_nombre,
-        u.nombre_completo as docente_nombre
+        u.nombre_completo as docente_nombre,
+        g.clave as grupo_clave,
+        g.carrera as grupo_carrera
     FROM horarios h
     JOIN laboratorios l ON h.laboratorio_id = l.id
     LEFT JOIN grupos g ON h.grupo_id = g.id
     LEFT JOIN usuarios u ON h.docente_id = u.id
-    WHERE 1=1
+    WHERE h.periodo_id = ?
     """
-    params = []
+    params = [periodo_id]
+    permitidas = carreras_de(admin)
+    if permitidas is not None:
+        query += f" AND g.carrera IN ({','.join('?' * len(permitidas)) or 'NULL'})"
+        params.extend(permitidas)
     if laboratorio_id and laboratorio_id != "todos":
         query += " AND h.laboratorio_id = ?"
         params.append(laboratorio_id)
@@ -1425,12 +1510,12 @@ def get_schedules(
     return rows
 
 _SQL_INSERT_HORARIO = """
-INSERT INTO horarios (grupo_id, laboratorio_id, docente_id, materia, dia_semana, hora_inicio, hora_fin)
-VALUES (:grupo_id, :laboratorio_id, :docente_id, :materia, :dia_semana, :hora_inicio, :hora_fin);
+INSERT INTO horarios (grupo_id, laboratorio_id, docente_id, materia, dia_semana, hora_inicio, hora_fin, periodo_id)
+VALUES (:grupo_id, :laboratorio_id, :docente_id, :materia, :dia_semana, :hora_inicio, :hora_fin, :periodo_id);
 """
 
 @app.post("/api/schedules")
-def create_schedule(payload: ScheduleCreate, admin: dict = Depends(get_current_admin)):
+def create_schedule(payload: ScheduleCreate, admin: dict = Depends(get_current_staff)):
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -1438,7 +1523,7 @@ def create_schedule(payload: ScheduleCreate, admin: dict = Depends(get_current_a
             "dia": payload.dia_semana, "hora_inicio": payload.hora_inicio, "hora_fin": payload.hora_fin,
             "laboratorio": payload.laboratorio_id, "grupo": payload.grupo_id,
             "docente": payload.docente_id, "materia": payload.materia,
-        }, cursor, [])
+        }, cursor, [], periodo_id=periodo_activo(cursor)["id"], carreras=carreras_de(admin))
         if errores:
             raise HTTPException(status_code=400, detail=" ".join(errores))
         cursor.execute(_SQL_INSERT_HORARIO, horario)
@@ -1448,11 +1533,13 @@ def create_schedule(payload: ScheduleCreate, admin: dict = Depends(get_current_a
     return {"success": True, "message": "Horario registrado correctamente."}
 
 @app.get("/api/schedules/template")
-def schedules_template(admin: dict = Depends(get_current_admin)):
+def schedules_template(admin: dict = Depends(get_current_staff)):
     """Plantilla de Excel con listas desplegables de los datos reales del sistema."""
     conn = get_connection()
     try:
-        contenido = generar_plantilla(conn.cursor())
+        cursor = conn.cursor()
+        periodo = periodo_activo(cursor)
+        contenido = generar_plantilla(cursor, periodo["id"], carreras_de(admin), periodo["nombre"])
     finally:
         conn.close()
     return Response(
@@ -1467,7 +1554,7 @@ MAX_IMPORT_BYTES = 2 * 1024 * 1024
 async def import_schedules(
     archivo: UploadFile = File(...),
     confirmar: bool = Query(False),
-    admin: dict = Depends(get_current_admin),
+    admin: dict = Depends(get_current_staff),
 ):
     """
     confirmar=false: solo revisa y devuelve el resultado fila por fila.
@@ -1488,9 +1575,11 @@ async def import_schedules(
     conn = get_connection()
     try:
         cursor = conn.cursor()
+        periodo_id = periodo_activo(cursor)["id"]
+        carreras = carreras_de(admin)
         resultado, ocupados, validos = [], [], []
         for f in filas:
-            horario, errores = validar_horario(f, cursor, ocupados, materias)
+            horario, errores = validar_horario(f, cursor, ocupados, materias, periodo_id=periodo_id, carreras=carreras)
             if horario:
                 ocupados.append((horario["laboratorio_id"], horario["dia_semana"], horario["hora_inicio"],
                                  horario["hora_fin"], horario["grupo_id"], horario["docente_id"]))
@@ -1517,9 +1606,20 @@ async def import_schedules(
     }
 
 @app.delete("/api/schedules/{schedule_id}")
-def delete_schedule(schedule_id: int, admin: dict = Depends(get_current_admin)):
+def delete_schedule(schedule_id: int, admin: dict = Depends(get_current_staff)):
     conn = get_connection()
     cursor = conn.cursor()
+    row = cursor.execute("""SELECT h.periodo_id, g.carrera FROM horarios h LEFT JOIN grupos g ON g.id = h.grupo_id
+                            WHERE h.id = ?""", (schedule_id,)).fetchone()
+    try:
+        if not row:
+            raise HTTPException(status_code=404, detail="Horario no encontrado.")
+        if row["periodo_id"] != periodo_activo(cursor)["id"]:
+            raise HTTPException(status_code=400, detail="Los horarios de periodos cerrados son histórico y no se modifican.")
+        exigir_carrera(admin, row["carrera"], "este horario")
+    except HTTPException:
+        conn.close()
+        raise
     cursor.execute("DELETE FROM horarios WHERE id = ?", (schedule_id,))
     conn.commit()
     conn.close()
@@ -1605,36 +1705,42 @@ def toggle_admin(admin_id: int, admin: dict = Depends(get_current_admin)):
 
 @app.post("/api/admins/me/password")
 def change_own_password(payload: PasswordChange, authorization: Optional[str] = Header(None),
-                        admin: dict = Depends(get_current_admin)):
+                        admin: dict = Depends(get_current_staff)):
+    tabla = "administradores" if admin.get("rol") == "administrador" else "jefes_carrera"
     conn = get_connection()
     try:
         cur = conn.cursor()
-        cur.execute("SELECT password_hash FROM administradores WHERE id = ?", (admin.get("user_id"),))
+        cur.execute(f"SELECT password_hash FROM {tabla} WHERE id = ?", (admin.get("user_id"),))
         row = cur.fetchone()
         if not row or not verify_password(payload.actual, row["password_hash"]):
             raise HTTPException(status_code=400, detail="La contraseña actual no es correcta.")
         if payload.actual == payload.nueva:
             raise HTTPException(status_code=400, detail="La nueva contraseña debe ser distinta a la actual.")
-        cur.execute("UPDATE administradores SET password_hash = ? WHERE id = ?",
+        cur.execute(f"UPDATE {tabla} SET password_hash = ? WHERE id = ?",
                     (hash_password(payload.nueva), admin.get("user_id")))
         conn.commit()
     finally:
         conn.close()
     token = (authorization or "").replace("Bearer ", "").strip()
-    destroy_sessions_for("administrador", admin.get("user_id"), except_token=token)  # cierra otras sesiones
+    destroy_sessions_for(admin.get("rol"), admin.get("user_id"), except_token=token)  # cierra otras sesiones
     return {"success": True, "message": "Contraseña actualizada. Se cerraron sus otras sesiones abiertas."}
 
 @app.get("/api/groups")
-def get_groups(admin: dict = Depends(get_current_admin)):
+def get_groups(periodo_id: Optional[str] = None, admin: dict = Depends(get_current_staff)):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM grupos ORDER BY carrera, semestre, nombre;")
-    rows = [dict(r) for r in cursor.fetchall()]
+    periodo_id = periodo_id or periodo_activo(cursor)["id"]
+    cursor.execute("""
+        SELECT g.*, (SELECT COUNT(*) FROM usuarios u WHERE u.grupo_id = g.id AND u.estado = 'activo')
+                  + (SELECT COUNT(*) FROM inscripciones i WHERE i.grupo_id = g.id) AS alumnos
+        FROM grupos g WHERE g.periodo_id = ? ORDER BY g.carrera, g.semestre, g.nombre;""", (periodo_id,))
+    permitidas = carreras_de(admin)
+    rows = [dict(r) for r in cursor.fetchall() if permitidas is None or r["carrera"] in permitidas]
     conn.close()
     return rows
 
 @app.post("/api/groups")
-def create_group(payload: GroupCreate, admin: dict = Depends(get_current_admin)):
+def create_group(payload: GroupCreate, admin: dict = Depends(get_current_staff)):
     gid = (payload.id or "").strip().upper()
     nombre = " ".join((payload.nombre or "").split())
     carrera = (payload.carrera or "").strip()
@@ -1644,6 +1750,7 @@ def create_group(payload: GroupCreate, admin: dict = Depends(get_current_admin))
         raise HTTPException(status_code=400, detail="Indique el nombre y la carrera del grupo.")
     if not 1 <= int(payload.semestre) <= 12:
         raise HTTPException(status_code=400, detail="El semestre debe estar entre 1 y 12.")
+    exigir_carrera(admin, carrera, "grupos de esa carrera")
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -1651,13 +1758,185 @@ def create_group(payload: GroupCreate, admin: dict = Depends(get_current_admin))
         if cursor.fetchone():
             raise HTTPException(status_code=400, detail=f"Ya existe el grupo {gid}.")
         cursor.execute("""
-        INSERT INTO grupos (id, nombre, carrera, semestre)
-        VALUES (?, ?, ?, ?);
-        """, (gid, nombre, carrera, int(payload.semestre)))
+        INSERT INTO grupos (id, nombre, carrera, semestre, periodo_id, clave)
+        VALUES (?, ?, ?, ?, ?, ?);
+        """, (gid, nombre, carrera, int(payload.semestre), periodo_activo(cursor)["id"], gid))
         conn.commit()
     finally:
         conn.close()
     return {"success": True, "message": f"Grupo {gid} registrado."}
+
+@app.put("/api/groups/{group_id}")
+def update_group(group_id: str, payload: GroupUpdate, admin: dict = Depends(get_current_staff)):
+    nombre = " ".join((payload.nombre or "").split())
+    carrera = (payload.carrera or "").strip()
+    if len(nombre) < 2 or not carrera or not 1 <= int(payload.semestre) <= 12:
+        raise HTTPException(status_code=400, detail="Revise nombre, carrera y semestre (1 a 12).")
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        row = cursor.execute("SELECT carrera, periodo_id FROM grupos WHERE id = ?", (group_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Grupo no encontrado.")
+        if row["periodo_id"] != periodo_activo(cursor)["id"]:
+            raise HTTPException(status_code=400, detail="Los grupos de periodos cerrados son histórico y no se modifican.")
+        exigir_carrera(admin, row["carrera"], "este grupo")
+        exigir_carrera(admin, carrera, "grupos de esa carrera")
+        cursor.execute("UPDATE grupos SET nombre = ?, carrera = ?, semestre = ? WHERE id = ?",
+                       (nombre, carrera, int(payload.semestre), group_id))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"success": True, "message": f"Grupo {group_id} actualizado."}
+
+# -------------------------------------------------------------
+# PERIODOS ESCOLARES (Ene-Jun / Ago-Dic) Y JEFES DE CARRERA
+# -------------------------------------------------------------
+@app.get("/api/periodos")
+def list_periodos(admin: dict = Depends(get_current_staff)):
+    conn = get_connection()
+    try:
+        rows = conn.execute("""
+        SELECT p.*,
+          (SELECT COUNT(*) FROM grupos g WHERE g.periodo_id = p.id) AS grupos,
+          (SELECT COUNT(*) FROM horarios h WHERE h.periodo_id = p.id) AS horarios,
+          (SELECT COUNT(*) FROM registros_acceso r WHERE r.periodo_id = p.id) AS accesos,
+          (SELECT COUNT(*) FROM inscripciones i WHERE i.periodo_id = p.id) AS inscripciones
+        FROM periodos p ORDER BY p.id DESC;""").fetchall()
+        activo = [dict(r) for r in rows if r["estado"] == "activo"]
+        siguiente = periodo_siguiente(activo[0]["id"]) if activo else None
+    finally:
+        conn.close()
+    return {"periodos": [dict(r) for r in rows], "siguiente": siguiente}
+
+@app.post("/api/periodos/cerrar")
+def cerrar_periodo(admin: dict = Depends(get_current_admin)):
+    """
+    Cierra el periodo activo y abre el siguiente. No se borra nada:
+    - Se guarda la foto de qué alumno estaba en qué grupo (inscripciones).
+    - Los grupos se archivan con id 'CLAVE@periodo' para poder reutilizar la clave.
+    - Horarios y accesos quedan ligados al periodo cerrado (histórico de solo lectura).
+    - Los alumnos quedan sin grupo hasta que se les asigne uno del nuevo periodo.
+    """
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        actual = periodo_activo(cur)
+        nuevo = periodo_siguiente(actual["id"])
+        ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cur.execute("PRAGMA foreign_keys = OFF;")
+        cur.execute("""
+        INSERT INTO inscripciones (periodo_id, usuario_id, nombre_completo, matricula_clave, carrera,
+                                   grupo_id, grupo_clave, grupo_nombre, semestre)
+        SELECT ?, u.id, u.nombre_completo, u.matricula_clave, COALESCE(g.carrera, u.carrera),
+               g.id || '@' || ?, g.clave, g.nombre, g.semestre
+        FROM usuarios u JOIN grupos g ON g.id = u.grupo_id
+        WHERE u.tipo = 'alumno' AND g.periodo_id = ?;""", (actual["id"], actual["id"], actual["id"]))
+        inscritos = cur.rowcount
+        grupos = [r["id"] for r in cur.execute("SELECT id FROM grupos WHERE periodo_id = ?", (actual["id"],))]
+        for gid in grupos:
+            archivado = f"{gid}@{actual['id']}"
+            cur.execute("UPDATE horarios SET grupo_id = ? WHERE grupo_id = ?", (archivado, gid))
+            cur.execute("UPDATE usuarios SET grupo_id = NULL WHERE grupo_id = ?", (gid,))
+            cur.execute("UPDATE grupos SET id = ? WHERE id = ?", (archivado, gid))
+        cur.execute("UPDATE periodos SET estado = 'cerrado', fecha_cierre = ?, cerrado_por = ? WHERE id = ?",
+                    (ahora, admin.get("username"), actual["id"]))
+        cur.execute("INSERT OR IGNORE INTO periodos (id, nombre, fecha_inicio, fecha_fin, estado) VALUES (?, ?, ?, ?, 'activo')",
+                    (nuevo["id"], nuevo["nombre"], nuevo["fecha_inicio"], nuevo["fecha_fin"]))
+        cur.execute("UPDATE periodos SET estado = 'activo', fecha_cierre = NULL WHERE id = ?", (nuevo["id"],))
+        conn.commit()
+        cur.execute("PRAGMA foreign_keys = ON;")
+        problemas = cur.execute("PRAGMA foreign_key_check;").fetchall()
+        if problemas:
+            print("[PERIODOS] Aviso de integridad tras el cierre:", problemas[:5])
+    finally:
+        conn.close()
+    return {"success": True, "message": f"Periodo {actual['nombre']} cerrado. Periodo activo: {nuevo['nombre']}.",
+            "cerrado": actual["id"], "activo": nuevo["id"], "grupos_archivados": len(grupos), "inscripciones": inscritos}
+
+def _jefe_dict(cursor, row) -> dict:
+    d = {k: row[k] for k in row.keys() if k != "password_hash"}
+    d["carreras"] = [r["carrera"] for r in cursor.execute(
+        "SELECT carrera FROM jefe_carreras WHERE jefe_id = ? ORDER BY carrera", (row["id"],))]
+    return d
+
+def _validar_carreras(carreras: list) -> list:
+    oficiales = set(cargar_materias().keys())
+    limpias = sorted({c.strip() for c in carreras if c and c.strip()})
+    if not limpias:
+        raise HTTPException(status_code=400, detail="Asigne al menos una carrera.")
+    malas = [c for c in limpias if c not in oficiales]
+    if malas:
+        raise HTTPException(status_code=400, detail=f"Carrera no válida: {', '.join(malas)}.")
+    return limpias
+
+@app.get("/api/jefes")
+def list_jefes(admin: dict = Depends(get_current_admin)):
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        return [_jefe_dict(cur, r) for r in cur.execute("SELECT * FROM jefes_carrera ORDER BY activo DESC, nombre").fetchall()]
+    finally:
+        conn.close()
+
+@app.post("/api/jefes")
+def create_jefe(payload: JefeCreate, admin: dict = Depends(get_current_admin)):
+    username = payload.username.strip().lower()
+    nombre = " ".join(payload.nombre.split())
+    email = (payload.email or "").strip().lower() or None
+    if email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        raise HTTPException(status_code=400, detail="El correo no tiene un formato válido.")
+    carreras = _validar_carreras(payload.carreras)
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        if cur.execute("SELECT 1 FROM jefes_carrera WHERE lower(username) = ? UNION SELECT 1 FROM administradores WHERE lower(username) = ?",
+                       (username, username)).fetchone():
+            raise HTTPException(status_code=400, detail=f"El usuario '{username}' ya está en uso.")
+        if cur.execute("SELECT 1 FROM usuarios WHERE lower(matricula_clave) = ? OR lower(id) = ?", (username, username)).fetchone():
+            raise HTTPException(status_code=400, detail="Ese usuario coincide con la matrícula o clave de un alumno/docente. Elija otro.")
+        cur.execute("INSERT INTO jefes_carrera (username, password_hash, nombre, email, activo, fecha_creacion) VALUES (?, ?, ?, ?, 1, ?)",
+                    (username, hash_password(payload.password), nombre, email, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        jefe_id = cur.lastrowid
+        cur.executemany("INSERT INTO jefe_carreras (jefe_id, carrera) VALUES (?, ?)", [(jefe_id, c) for c in carreras])
+        conn.commit()
+    finally:
+        conn.close()
+    return {"success": True, "message": f"Jefe de carrera '{username}' creado. Ya puede iniciar sesión."}
+
+@app.put("/api/jefes/{jefe_id}/carreras")
+def update_jefe_carreras(jefe_id: int, payload: JefeCarreras, admin: dict = Depends(get_current_admin)):
+    carreras = _validar_carreras(payload.carreras)
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        if not cur.execute("SELECT 1 FROM jefes_carrera WHERE id = ?", (jefe_id,)).fetchone():
+            raise HTTPException(status_code=404, detail="Jefe de carrera no encontrado.")
+        cur.execute("DELETE FROM jefe_carreras WHERE jefe_id = ?", (jefe_id,))
+        cur.executemany("INSERT INTO jefe_carreras (jefe_id, carrera) VALUES (?, ?)", [(jefe_id, c) for c in carreras])
+        conn.commit()
+    finally:
+        conn.close()
+    destroy_sessions_for("jefe_carrera", jefe_id)  # vuelve a entrar con sus nuevas carreras
+    return {"success": True, "message": "Carreras actualizadas. Si tenía la sesión abierta, deberá entrar de nuevo."}
+
+@app.post("/api/jefes/{jefe_id}/toggle")
+def toggle_jefe(jefe_id: int, admin: dict = Depends(get_current_admin)):
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        row = cur.execute("SELECT username, activo FROM jefes_carrera WHERE id = ?", (jefe_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Jefe de carrera no encontrado.")
+        nuevo = 0 if row["activo"] else 1
+        cur.execute("UPDATE jefes_carrera SET activo = ? WHERE id = ?", (nuevo, jefe_id))
+        conn.commit()
+    finally:
+        conn.close()
+    if not nuevo:
+        destroy_sessions_for("jefe_carrera", jefe_id)
+    return {"success": True, "activo": nuevo,
+            "message": f"Jefe de carrera '{row['username']}' {'reactivado' if nuevo else 'desactivado'}."}
 
 # -------------------------------------------------------------
 # ELIMINACIÓN DEFINITIVA (con vista previa de lo que se borra)
@@ -1763,8 +2042,10 @@ def delete_group(group_id: str, admin: dict = Depends(get_current_admin)):
 def get_users(
     tipo: Optional[str] = None,
     q: Optional[str] = None,
-    admin: dict = Depends(get_current_admin)
+    admin: dict = Depends(get_current_staff)
 ):
+    if admin.get("rol") == "jefe_carrera":
+        tipo = "docente"   # el jefe de carrera solo consulta docentes
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -1826,12 +2107,27 @@ def _validar_usuario(payload: UserCreate, cursor) -> dict:
             )
     return datos
 
+def _exigir_docente_propio(admin: dict, cursor, user_id: str):
+    """El jefe de carrera solo administra docentes de sus carreras."""
+    if admin.get("rol") != "jefe_carrera":
+        return
+    row = cursor.execute("SELECT tipo, carrera FROM usuarios WHERE id = ?", (user_id,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+    if row["tipo"] != "docente":
+        raise HTTPException(status_code=403, detail="Solo puede administrar docentes.")
+    exigir_carrera(admin, row["carrera"], "este docente")
+
 @app.post("/api/users")
-def create_user(payload: UserCreate, admin: dict = Depends(get_current_admin)):
+def create_user(payload: UserCreate, admin: dict = Depends(get_current_staff)):
     conn = get_connection()
     try:
         cursor = conn.cursor()
         d = _validar_usuario(payload, cursor)
+        if admin.get("rol") == "jefe_carrera":
+            if d["tipo"] != "docente":
+                raise HTTPException(status_code=403, detail="El jefe de carrera solo puede registrar docentes.")
+            exigir_carrera(admin, d["carrera"], "docentes de esa carrera")
         cursor.execute("SELECT id FROM usuarios WHERE id = ? OR matricula_clave = ?", (d["id"], d["matricula_clave"]))
         if cursor.fetchone():
             raise HTTPException(status_code=400, detail="El ID o la matrícula/clave ya existen.")
@@ -1875,19 +2171,25 @@ def update_user(user_id: str, payload: UserCreate, admin: dict = Depends(get_cur
         conn.close()
 
 @app.delete("/api/users/{user_id}")
-def delete_user(user_id: str, admin: dict = Depends(get_current_admin)):
+def delete_user(user_id: str, admin: dict = Depends(get_current_staff)):
     conn = get_connection()
     cursor = conn.cursor()
+    try:
+        _exigir_docente_propio(admin, cursor, user_id)
+    except HTTPException:
+        conn.close()
+        raise
     cursor.execute("UPDATE usuarios SET estado = 'inactivo' WHERE id = ?", (user_id,))
     conn.commit()
     conn.close()
     return {"success": True, "message": "Usuario dado de baja (marcado inactivo)."}
 
 @app.post("/api/users/{user_id}/reactivate")
-def reactivate_user(user_id: str, admin: dict = Depends(get_current_admin)):
+def reactivate_user(user_id: str, admin: dict = Depends(get_current_staff)):
     conn = get_connection()
     try:
         cur = conn.cursor()
+        _exigir_docente_propio(admin, cur, user_id)
         cur.execute("UPDATE usuarios SET estado = 'activo' WHERE id = ?", (user_id,))
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="Usuario no encontrado.")
@@ -1897,9 +2199,14 @@ def reactivate_user(user_id: str, admin: dict = Depends(get_current_admin)):
     return {"success": True, "message": "Usuario reactivado."}
 
 @app.get("/api/users/{user_id}/details")
-def get_user_details(user_id: str, admin: dict = Depends(get_current_admin)):
+def get_user_details(user_id: str, admin: dict = Depends(get_current_staff)):
     conn = get_connection()
     cursor = conn.cursor()
+    try:
+        _exigir_docente_propio(admin, cursor, user_id)
+    except HTTPException:
+        conn.close()
+        raise
 
     cursor.execute("""
     SELECT u.*, g.nombre as grupo_nombre, mf.dimension, mf.calidad_muestra, mf.fecha_registro as fecha_rostro
@@ -1927,12 +2234,18 @@ def get_user_details(user_id: str, admin: dict = Depends(get_current_admin)):
     """, (user_id,))
     history = [dict(r) for r in cursor.fetchall()]
 
+    inscripciones = [dict(r) for r in cursor.execute("""
+        SELECT i.periodo_id, p.nombre AS periodo_nombre, i.grupo_clave, i.grupo_nombre, i.carrera, i.semestre
+        FROM inscripciones i LEFT JOIN periodos p ON p.id = i.periodo_id
+        WHERE i.usuario_id = ? ORDER BY i.periodo_id DESC;""", (user_id,))]
+
     conn.close()
     usuario = dict(user)
     usuario.pop("password_hash", None)  # nunca exponer hashes de contraseña
     return {
         "usuario": usuario,
-        "historial": history
+        "historial": history,
+        "inscripciones": inscripciones
     }
 
 @app.post("/api/users/{user_id}/facial-metadata")
@@ -2061,13 +2374,43 @@ def facial_capture(user_id: str, payload: FacialCapturePayload, admin: dict = De
 # -------------------------------------------------------------
 # RUTAS DE REPORTES (Sección 5, 9, RF-20)
 # -------------------------------------------------------------
+def _filtros_reporte(query: str, params: list, admin: dict, laboratorio_id, fecha_inicio, fecha_fin,
+                     resultado, periodo_id, q) -> str:
+    if laboratorio_id and laboratorio_id != "todos":
+        query += " AND ra.laboratorio_id = ?"
+        params.append(laboratorio_id)
+    if resultado and resultado != "todos":
+        query += " AND ra.resultado = ?"
+        params.append(resultado)
+    if fecha_inicio:
+        query += " AND DATE(ra.fecha_hora) >= DATE(?)"
+        params.append(fecha_inicio)
+    if fecha_fin:
+        query += " AND DATE(ra.fecha_hora) <= DATE(?)"
+        params.append(fecha_fin)
+    if periodo_id and periodo_id != "todos":
+        query += " AND ra.periodo_id = ?"
+        params.append(periodo_id)
+    if q and q.strip():
+        query += " AND (u.nombre_completo LIKE ? OR u.matricula_clave LIKE ? OR ra.motivo LIKE ?)"
+        term = f"%{q.strip()}%"
+        params.extend([term, term, term])
+    permitidas = carreras_de(admin)
+    if permitidas is not None:
+        marcas = ",".join("?" * len(permitidas)) or "NULL"
+        query += f" AND (u.carrera IN ({marcas}) OR l.carrera IN ({marcas}))"
+        params.extend(permitidas + permitidas)
+    return query + " ORDER BY ra.fecha_hora DESC;"
+
 @app.get("/api/reports/data")
 def get_report_data(
     laboratorio_id: Optional[str] = None,
     fecha_inicio: Optional[str] = None,
     fecha_fin: Optional[str] = None,
     resultado: Optional[str] = None,
-    admin: dict = Depends(get_current_admin)
+    periodo_id: Optional[str] = None,
+    q: Optional[str] = None,
+    admin: dict = Depends(get_current_staff)
 ):
     conn = get_connection()
     cursor = conn.cursor()
@@ -2085,7 +2428,8 @@ def get_report_data(
         u.tipo as tipo_usuario,
         u.matricula_clave,
         g.nombre as grupo,
-        d.nombre as dispositivo
+        d.nombre as dispositivo,
+        ra.periodo_id
     FROM registros_acceso ra
     LEFT JOIN laboratorios l ON ra.laboratorio_id = l.id
     LEFT JOIN usuarios u ON ra.usuario_id = u.id
@@ -2094,20 +2438,7 @@ def get_report_data(
     WHERE 1=1
     """
     params = []
-    if laboratorio_id and laboratorio_id != "todos":
-        query += " AND ra.laboratorio_id = ?"
-        params.append(laboratorio_id)
-    if resultado and resultado != "todos":
-        query += " AND ra.resultado = ?"
-        params.append(resultado)
-    if fecha_inicio:
-        query += " AND DATE(ra.fecha_hora) >= DATE(?)"
-        params.append(fecha_inicio)
-    if fecha_fin:
-        query += " AND DATE(ra.fecha_hora) <= DATE(?)"
-        params.append(fecha_fin)
-
-    query += " ORDER BY ra.fecha_hora DESC;"
+    query = _filtros_reporte(query, params, admin, laboratorio_id, fecha_inicio, fecha_fin, resultado, periodo_id, q)
     cursor.execute(query, params)
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
@@ -2119,7 +2450,9 @@ def export_report_csv(
     fecha_inicio: Optional[str] = None,
     fecha_fin: Optional[str] = None,
     resultado: Optional[str] = None,
-    admin: dict = Depends(get_current_admin)
+    periodo_id: Optional[str] = None,
+    q: Optional[str] = None,
+    admin: dict = Depends(get_current_staff)
 ):
     conn = get_connection()
     cursor = conn.cursor()
@@ -2135,34 +2468,22 @@ def export_report_csv(
         COALESCE(u.matricula_clave, 'N/A') as matricula_o_clave,
         ra.resultado,
         ra.motivo,
-        CASE WHEN ra.sincronizado_offline = 1 THEN 'Sí' ELSE 'No' END as fue_offline
+        CASE WHEN ra.sincronizado_offline = 1 THEN 'Sí' ELSE 'No' END as fue_offline,
+        COALESCE(ra.periodo_id, '') as periodo
     FROM registros_acceso ra
     LEFT JOIN laboratorios l ON ra.laboratorio_id = l.id
     LEFT JOIN usuarios u ON ra.usuario_id = u.id
     WHERE 1=1
     """
     params = []
-    if laboratorio_id and laboratorio_id != "todos":
-        query += " AND ra.laboratorio_id = ?"
-        params.append(laboratorio_id)
-    if resultado and resultado != "todos":
-        query += " AND ra.resultado = ?"
-        params.append(resultado)
-    if fecha_inicio:
-        query += " AND DATE(ra.fecha_hora) >= DATE(?)"
-        params.append(fecha_inicio)
-    if fecha_fin:
-        query += " AND DATE(ra.fecha_hora) <= DATE(?)"
-        params.append(fecha_fin)
-
-    query += " ORDER BY ra.fecha_hora DESC;"
+    query = _filtros_reporte(query, params, admin, laboratorio_id, fecha_inicio, fecha_fin, resultado, periodo_id, q)
     cursor.execute(query, params)
     rows = cursor.fetchall()
     conn.close()
 
     output = io.StringIO()
     writer = csv.writer(output, delimiter=",")
-    writer.writerow(["ID", "Fecha y Hora", "Laboratorio", "Edificio", "Persona", "Tipo", "Matrícula/Clave", "Resultado", "Motivo", "Sincronizado Offline"])
+    writer.writerow(["ID", "Fecha y Hora", "Laboratorio", "Edificio", "Persona", "Tipo", "Matrícula/Clave", "Resultado", "Motivo", "Sincronizado Offline", "Periodo"])
     for r in rows:
         writer.writerow(list(r))
 
