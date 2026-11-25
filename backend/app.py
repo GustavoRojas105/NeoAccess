@@ -827,6 +827,7 @@ def delete_lab(lab_id: str, admin: dict = Depends(get_current_admin)):
 def get_metrics_summary(
     laboratorio_id: Optional[str] = None,
     carrera: Optional[str] = None,
+    dispositivo_id: Optional[str] = None,
     fecha_inicio: Optional[str] = None,
     fecha_fin: Optional[str] = None,
     admin: dict = Depends(get_current_admin)
@@ -849,6 +850,9 @@ def get_metrics_summary(
     if laboratorio_id and laboratorio_id != "todos":
         query += " AND ra.laboratorio_id = ?"
         params.append(laboratorio_id)
+    if dispositivo_id and dispositivo_id != "todas":
+        query += " AND ra.dispositivo_id = ?"
+        params.append(dispositivo_id)
     if carrera and carrera != "todas":
         query += " AND (l.carrera = ? OR u.carrera = ?)"
         params.extend([carrera, carrera])
@@ -893,6 +897,7 @@ def get_metrics_summary(
 @app.get("/api/metrics/by-lab")
 def get_metrics_by_lab(
     carrera: Optional[str] = None,
+    dispositivo_id: Optional[str] = None,
     fecha_inicio: Optional[str] = None,
     fecha_fin: Optional[str] = None,
     admin: dict = Depends(get_current_admin)
@@ -913,6 +918,9 @@ def get_metrics_by_lab(
     WHERE l.activo = 1
     """
     params = []
+    if dispositivo_id and dispositivo_id != "todas":
+        query += " AND (ra.id IS NULL OR ra.dispositivo_id = ?)"
+        params.append(dispositivo_id)
     if carrera and carrera != "todas":
         query += " AND (l.carrera = ? OR u.carrera = ?)"
         params.extend([carrera, carrera])
@@ -933,6 +941,7 @@ def get_metrics_by_lab(
 def get_metrics_by_day(
     laboratorio_id: Optional[str] = None,
     carrera: Optional[str] = None,
+    dispositivo_id: Optional[str] = None,
     dias: int = 7,
     admin: dict = Depends(get_current_admin)
 ):
@@ -954,6 +963,9 @@ def get_metrics_by_day(
     if laboratorio_id and laboratorio_id != "todos":
         query += " AND ra.laboratorio_id = ?"
         params.append(laboratorio_id)
+    if dispositivo_id and dispositivo_id != "todas":
+        query += " AND ra.dispositivo_id = ?"
+        params.append(dispositivo_id)
     if carrera and carrera != "todas":
         query += " AND (l.carrera = ? OR u.carrera = ?)"
         params.extend([carrera, carrera])
@@ -965,16 +977,23 @@ def get_metrics_by_day(
     return rows
 
 @app.get("/api/metrics/recent-accesses")
-def get_recent_accesses(limit: int = 10, admin: dict = Depends(get_current_admin)):
+def get_recent_accesses(
+    limit: int = Query(10, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    dispositivo_id: Optional[str] = None,
+    resultado: Optional[str] = None,
+    admin: dict = Depends(get_current_admin)
+):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
-    SELECT 
+    query = """
+    SELECT
         ra.id,
         ra.fecha_hora,
         ra.resultado,
         ra.motivo,
         ra.sincronizado_offline,
+        ra.dispositivo_id,
         l.nombre as laboratorio_nombre,
         l.edificio,
         u.nombre_completo as usuario_nombre,
@@ -985,12 +1004,80 @@ def get_recent_accesses(limit: int = 10, admin: dict = Depends(get_current_admin
     LEFT JOIN laboratorios l ON ra.laboratorio_id = l.id
     LEFT JOIN usuarios u ON ra.usuario_id = u.id
     LEFT JOIN dispositivos d ON ra.dispositivo_id = d.id
-    ORDER BY ra.id DESC
-    LIMIT ?;
-    """, (limit,))
+    WHERE 1=1
+    """
+    params = []
+    if dispositivo_id and dispositivo_id != "todas":
+        query += " AND ra.dispositivo_id = ?"
+        params.append(dispositivo_id)
+    if resultado in ("permitido", "denegado"):
+        query += " AND ra.resultado = ?"
+        params.append(resultado)
+    query += " ORDER BY ra.id DESC LIMIT ? OFFSET ?;"
+    params.extend([limit, offset])
+    cursor.execute(query, params)
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
     return rows
+
+@app.get("/api/metrics/by-door")
+def get_metrics_by_door(
+    carrera: Optional[str] = None,
+    fecha_inicio: Optional[str] = None,
+    fecha_fin: Optional[str] = None,
+    admin: dict = Depends(get_current_admin)
+):
+    """Resumen modular por puerta: estado, totales del periodo, hoy y último acceso."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    filtro, params = "", []
+    if carrera and carrera != "todas":
+        filtro += " AND (l2.carrera = ? OR u.carrera = ?)"
+        params.extend([carrera, carrera])
+    if fecha_inicio:
+        filtro += " AND DATE(ra.fecha_hora) >= DATE(?)"
+        params.append(fecha_inicio)
+    if fecha_fin:
+        filtro += " AND DATE(ra.fecha_hora) <= DATE(?)"
+        params.append(fecha_fin)
+    cursor.execute(f"""
+    SELECT ra.dispositivo_id,
+           COUNT(*) AS total,
+           SUM(CASE WHEN ra.resultado = 'permitido' THEN 1 ELSE 0 END) AS permitidos,
+           SUM(CASE WHEN ra.resultado = 'denegado' THEN 1 ELSE 0 END) AS denegados,
+           SUM(CASE WHEN DATE(ra.fecha_hora) = DATE('now', 'localtime') THEN 1 ELSE 0 END) AS hoy,
+           COUNT(DISTINCT ra.usuario_id) AS usuarios_unicos
+    FROM registros_acceso ra
+    LEFT JOIN laboratorios l2 ON ra.laboratorio_id = l2.id
+    LEFT JOIN usuarios u ON ra.usuario_id = u.id
+    WHERE 1=1 {filtro}
+    GROUP BY ra.dispositivo_id
+    """, params)
+    totales = {r["dispositivo_id"]: dict(r) for r in cursor.fetchall()}
+
+    cursor.execute("""
+    SELECT d.id, d.nombre, d.laboratorio_id, d.ultima_senal, d.intervalo_latido_seg, d.activo,
+           l.nombre AS laboratorio_nombre, l.edificio
+    FROM dispositivos d LEFT JOIN laboratorios l ON d.laboratorio_id = l.id
+    ORDER BY l.nombre, d.nombre
+    """)
+    puertas = [dict(d) for d in cursor.fetchall()]
+    for item in puertas:
+        item["estado"] = calculate_device_status(item["ultima_senal"], item["intervalo_latido_seg"] or 300, item["activo"])
+        t = totales.get(item["id"], {})
+        for k in ("total", "permitidos", "denegados", "hoy", "usuarios_unicos"):
+            item[k] = t.get(k) or 0
+        item["tasa"] = round(item["permitidos"] / item["total"] * 100, 1) if item["total"] else 0.0
+        ultimo = cursor.execute("""
+            SELECT ra.fecha_hora, ra.resultado, u.nombre_completo AS usuario_nombre
+            FROM registros_acceso ra LEFT JOIN usuarios u ON ra.usuario_id = u.id
+            WHERE ra.dispositivo_id = ? ORDER BY ra.id DESC LIMIT 1
+        """, (item["id"],)).fetchone()
+        item["ultimo_acceso"] = dict(ultimo) if ultimo else None
+        for k in ("ultima_senal", "intervalo_latido_seg", "activo"):
+            item.pop(k, None)
+    conn.close()
+    return puertas
 
 # -------------------------------------------------------------
 # RUTAS DE DISPOSITIVOS Y PUERTAS (Sección 5, 9, RF-10 al RF-13)

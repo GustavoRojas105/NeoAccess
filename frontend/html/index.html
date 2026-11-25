@@ -190,6 +190,13 @@
             </div>
 
             <div class="flex-1 min-w-[180px]">
+              <label class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Puerta</label>
+              <select id="filter-metrics-door" onchange="verPuertaMetricas(this.value)" class="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2 focus:ring-1 focus:ring-slate-700">
+                <option value="todas">Todas las puertas (general)</option>
+              </select>
+            </div>
+
+            <div class="flex-1 min-w-[180px]">
               <label class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Carrera</label>
               <select id="filter-metrics-career" class="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2 focus:ring-1 focus:ring-slate-700">
                 <option value="todas">Todas las carreras</option>
@@ -218,6 +225,31 @@
             <button id="btn-apply-metrics-filter" class="self-end px-4 py-2 bg-slate-900 text-white text-xs font-medium rounded-lg hover:bg-slate-800 transition">
               Aplicar Filtros
             </button>
+          </div>
+
+          <!-- Accesos por puerta (módulos) -->
+          <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+              <h4 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <i data-lucide="door-open" class="w-4 h-4 text-slate-500"></i>
+                <span>Accesos por puerta</span>
+                <span class="text-[10px] font-normal text-slate-400">— en el periodo elegido</span>
+              </h4>
+              <button type="button" id="btn-metricas-general" onclick="verPuertaMetricas('todas')"
+                class="px-3 py-1.5 text-xs font-semibold rounded-lg border transition bg-slate-900 text-white border-slate-900">
+                Ver general (todas las puertas)
+              </button>
+            </div>
+            <div id="grid-puertas-metricas" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              <p class="text-xs text-slate-400">Cargando puertas…</p>
+            </div>
+          </div>
+
+          <div id="metrics-door-banner" class="hidden bg-slate-900 text-white rounded-xl px-4 py-3 flex flex-wrap items-center gap-3 text-xs">
+            <i data-lucide="door-open" class="w-4 h-4"></i>
+            <span>Viendo solo la puerta: <strong id="metrics-door-banner-name">—</strong></span>
+            <span class="text-slate-400">Los indicadores, gráficas e historial de abajo son de esta puerta.</span>
+            <button type="button" onclick="verPuertaMetricas('todas')" class="ml-auto px-3 py-1 rounded-lg bg-white text-slate-900 font-semibold hover:bg-slate-100">Volver a general</button>
           </div>
 
           <!-- Tarjetas KPI -->
@@ -301,10 +333,15 @@
             <div class="p-4 border-b border-slate-200 flex items-center justify-between">
               <h4 class="text-sm font-bold text-slate-900 flex items-center gap-2">
                 <i data-lucide="history" class="w-4 h-4 text-slate-500"></i>
-                <span>Últimos Intentos de Acceso</span>
+                <span id="metrics-history-title">Historial de accesos · todas las puertas</span>
                 <span class="text-[10px] font-normal text-slate-400 ml-1">— más reciente arriba ↑</span>
               </h4>
               <div class="flex items-center gap-2">
+                <select id="filter-metrics-result" onchange="reiniciarHistorialMetricas()" class="text-xs bg-slate-50 border border-slate-300 rounded-lg p-1.5">
+                  <option value="">Todos los resultados</option>
+                  <option value="permitido">Solo permitidos</option>
+                  <option value="denegado">Solo denegados</option>
+                </select>
                 <span id="live-indicator" class="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600">
                   <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block"></span>
                   EN VIVO
@@ -326,6 +363,12 @@
                 </thead>
                 <tbody id="table-recent-accesses" class="divide-y divide-slate-100 text-slate-700"></tbody>
               </table>
+            </div>
+            <div class="p-3 border-t border-slate-100 flex items-center justify-between text-xs">
+              <span id="metrics-history-count" class="text-slate-400"></span>
+              <button type="button" id="btn-metrics-more" onclick="cargarMasHistorialMetricas()" class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-medium text-slate-700">
+                Cargar más
+              </button>
             </div>
           </div>
         </section>
@@ -1729,7 +1772,7 @@ bash neoaccess/setup_rpi.sh</pre>
   <script src="/scripts/eliminar.js?v=20261124_11"></script>
   <script src="/scripts/app.js?v=20261125_2"></script>
   <script src="/scripts/laboratories.js?v=20261124_11"></script>
-  <script src="/scripts/metrics.js?v=20261124_11"></script>
+  <script src="/scripts/metrics.js?v=20261125_1"></script>
   <script src="/scripts/devices.js?v=20261125_3"></script>
   <script src="/scripts/schedules.js?v=20261125_1"></script>
   <script src="/scripts/users.js?v=20261124_11"></script>

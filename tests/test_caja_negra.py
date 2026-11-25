@@ -261,6 +261,40 @@ class TestCuentasPortal(Base):
         self.assertEqual(C.put("/api/users/DOC-ISC", headers=self.DO, json=d).status_code, 403)
 
 
+class TestMetricasPorPuerta(Base):
+    def test_resumen_e_historial_por_puerta(self):
+        tok_a = C.post("/api/devices", headers=self.A, json={"id": "PTA-A", "laboratorio_id": "LAB-RED", "nombre": "Puerta A"}).json()["token_api"]
+        tok_b = C.post("/api/devices", headers=self.A, json={"id": "PTA-B", "laboratorio_id": "LAB-CIV", "nombre": "Puerta B"}).json()["token_api"]
+        acc = lambda dev, tok, res, usuario="22030001": C.post("/api/iot/access-attempt", json={
+            "dispositivo_id": dev, "token_api": tok, "usuario_id": usuario, "resultado": res, "motivo": "métricas"})
+        for r in ("permitido", "permitido", "denegado"):
+            acc("PTA-A", tok_a, r)
+        acc("PTA-B", tok_b, "denegado", None)
+
+        puertas = {p["id"]: p for p in C.get("/api/metrics/by-door", headers=self.A).json()}
+        a, b = puertas["PTA-A"], puertas["PTA-B"]
+        self.assertEqual((a["total"], a["permitidos"], a["denegados"], a["hoy"]), (3, 2, 1, 3))
+        self.assertEqual((b["total"], b["denegados"], b["ultimo_acceso"]["usuario_nombre"]), (1, 1, None))
+        self.assertEqual(a["tasa"], 66.7)
+        self.assertEqual(a["ultimo_acceso"]["resultado"], "denegado")
+        self.assertNotIn("token_api", a)                                               # nunca se expone el token
+
+        s = C.get("/api/metrics/summary", headers=self.A, params={"dispositivo_id": "PTA-A"}).json()
+        self.assertEqual((s["total_accesos"], s["accesos_permitidos"]), (3, 2))
+        self.assertGreaterEqual(C.get("/api/metrics/summary", headers=self.A).json()["total_accesos"], 4)   # general = todas
+        hist = C.get("/api/metrics/recent-accesses", headers=self.A, params={"dispositivo_id": "PTA-A", "limit": 2}).json()
+        self.assertEqual(len(hist), 2)
+        self.assertTrue(all(h["dispositivo_id"] == "PTA-A" for h in hist))
+        mas = C.get("/api/metrics/recent-accesses", headers=self.A, params={"dispositivo_id": "PTA-A", "limit": 2, "offset": 2}).json()
+        self.assertEqual(len(mas), 1)
+        den = C.get("/api/metrics/recent-accesses", headers=self.A, params={"dispositivo_id": "PTA-A", "resultado": "denegado"}).json()
+        self.assertEqual([h["resultado"] for h in den], ["denegado"])
+        dias = C.get("/api/metrics/by-day", headers=self.A, params={"dispositivo_id": "PTA-B"}).json()
+        self.assertEqual(sum(d["total"] for d in dias), 1)
+        self.assertEqual(C.get("/api/metrics/recent-accesses", headers=self.A, params={"limit": 0}).status_code, 422)  # límite
+        self.assertEqual(C.get("/api/metrics/by-door", headers=self.J).status_code, 403)   # solo admin
+
+
 class TestTokenDispositivo(Base):
     def test_regenerar_token_invalida_el_anterior(self):
         viejo = C.post("/api/devices", headers=self.A, json={"id": "RPI-TOK", "laboratorio_id": "LAB-RED", "nombre": "Puerta Token"}).json()["token_api"]
