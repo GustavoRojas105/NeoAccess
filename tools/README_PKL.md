@@ -61,9 +61,9 @@ Abre con Excel o bloc de notas el archivo:
 Pega la lista del grupo con estas columnas:
 ```csv
 matricula,nombre_completo,carrera,grupo,archivo_foto
-22030015,Carlos Alberto Mendoza Hernandez,Ingenieria Mecatronica,MEC-801,22030015.jpg
-22030048,Ana Sofia Torres Morales,Ingenieria Mecatronica,MEC-801,22030048.jpg
-22030088,Gustavo Antonio Rojas Morales,Ingenieria Mecatronica,MEC-801,22030088.jpg
+22030015,Carlos Alberto Mendoza Hernandez,Ingeniería en Electromecánica,MEC-801,22030015.jpg
+22030048,Ana Sofia Torres Morales,Ingeniería en Electromecánica,MEC-801,22030048.jpg
+22030088,Gustavo Antonio Rojas Morales,Ingeniería en Electromecánica,MEC-801,22030088.jpg
 ```
 
 #### Paso 3: Ejecutar el alimentador automático

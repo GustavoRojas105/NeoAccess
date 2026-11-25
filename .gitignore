@@ -39,3 +39,6 @@ config_servidor.env
 
 # Simulador de prueba de acceso (datos locales)
 prueba_acceso/prueba_acceso.db
+
+# Respaldos locales de la base de datos (contienen hashes de contraseñas)
+database/respaldos/

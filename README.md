@@ -144,7 +144,7 @@ Desde el Dashboard → menú lateral → **Modo mantenimiento** (el indicador mu
    - **Clave / ID:** Ejemplo: `LAB-STEM-04` o `LAB-ED6-03`.
    - **Nombre:** Ejemplo: `Laboratorio de Visión Artificial y Robótica`.
    - **Edificio:** Selecciona `Laboratorios STEM`, `Edificio 6`, etc.
-   - **Carrera:** Ejemplo: `Ingeniería Mecatrónica`.
+   - **Carrera:** Ejemplo: `Ingeniería en Electromecánica`.
    - **Capacidad:** Ejemplo: `30` alumnos.
 4. Haz clic en **Guardar Laboratorio**. El laboratorio quedará registrado de forma permanente en la base de datos y disponible al instante en filtros, horarios y puertas.
 

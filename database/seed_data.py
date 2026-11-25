@@ -41,10 +41,10 @@ def seed():
 
     # 2. Laboratorios (Edificio 6 y STEM)
     labs = [
-        ("LAB-STEM-01", "Lab STEM de Robótica y Automatización", "Laboratorios STEM", "Ingeniería Mecatrónica", 25, "Equipado con brazos robóticos y celdas de manufactura"),
-        ("LAB-STEM-02", "Lab STEM de IoT y Sistemas Embebidos", "Laboratorios STEM", "Ingeniería Mecatrónica", 25, "Especializado en microcontroladores, ESP32 y Raspberry Pi"),
-        ("LAB-STEM-03", "Lab STEM de Prototipado y Fabricación Digital", "Laboratorios STEM", "Ingeniería Mecatrónica", 20, "Impresoras 3D, corte láser y estaciones CNC"),
-        ("LAB-ED6-01", "Lab de Cómputo y Simulación 1", "Edificio 6", "Ingeniería Mecatrónica", 35, "Estaciones de trabajo para MATLAB, SolidWorks y LabVIEW"),
+        ("LAB-STEM-01", "Lab STEM de Robótica y Automatización", "Laboratorios STEM", "Ingeniería en Electromecánica", 25, "Equipado con brazos robóticos y celdas de manufactura"),
+        ("LAB-STEM-02", "Lab STEM de IoT y Sistemas Embebidos", "Laboratorios STEM", "Ingeniería en Electromecánica", 25, "Especializado en microcontroladores, ESP32 y Raspberry Pi"),
+        ("LAB-STEM-03", "Lab STEM de Prototipado y Fabricación Digital", "Laboratorios STEM", "Ingeniería en Electromecánica", 20, "Impresoras 3D, corte láser y estaciones CNC"),
+        ("LAB-ED6-01", "Lab de Cómputo y Simulación 1", "Edificio 6", "Ingeniería en Electromecánica", 35, "Estaciones de trabajo para MATLAB, SolidWorks y LabVIEW"),
         ("LAB-ED6-02", "Lab de Redes y Cómputo Distribuido", "Edificio 6", "Ingeniería en Sistemas Computacionales", 30, "Racks de telecomunicaciones y switches administrables")
     ]
     cursor.executemany("""
@@ -68,9 +68,9 @@ def seed():
 
     # 4. Grupos
     grupos = [
-        ("MEC-801", "801 Mecatrónica (Robótica)", "Ingeniería Mecatrónica", 8),
-        ("MEC-601", "601 Mecatrónica (Control)", "Ingeniería Mecatrónica", 6),
-        ("MEC-401", "401 Mecatrónica (Electrónica)", "Ingeniería Mecatrónica", 4),
+        ("MEC-801", "801 Electromecánica (Robótica)", "Ingeniería en Electromecánica", 8),
+        ("MEC-601", "601 Electromecánica (Control)", "Ingeniería en Electromecánica", 6),
+        ("MEC-401", "401 Electromecánica (Electrónica)", "Ingeniería en Electromecánica", 4),
         ("SIS-701", "701 Sistemas (IoT y Redes)", "Ingeniería en Sistemas Computacionales", 7)
     ]
     cursor.executemany("""
@@ -80,15 +80,15 @@ def seed():
 
     # 5. Usuarios
     usuarios = [
-        ("DOC-001", "Dr. Martín Gómez Pérez", "docente", "DOC-ITSOEH-7489", "Ingeniería Mecatrónica", None, "activo"),
-        ("DOC-002", "Mtra. Laura Elena Sánchez", "docente", "DOC-ITSOEH-8912", "Ingeniería Mecatrónica", None, "activo"),
+        ("DOC-001", "Dr. Martín Gómez Pérez", "docente", "DOC-ITSOEH-7489", "Ingeniería en Electromecánica", None, "activo"),
+        ("DOC-002", "Mtra. Laura Elena Sánchez", "docente", "DOC-ITSOEH-8912", "Ingeniería en Electromecánica", None, "activo"),
         ("DOC-003", "Ing. Roberto Carlos Viveros", "docente", "DOC-ITSOEH-3301", "Ingeniería en Sistemas Computacionales", None, "activo"),
-        ("ALU-001", "Carlos Alberto Mendoza Hernández", "alumno", "22030015", "Ingeniería Mecatrónica", "MEC-801", "activo"),
-        ("ALU-002", "Ana Sofía Torres Morales", "alumno", "22030048", "Ingeniería Mecatrónica", "MEC-801", "activo"),
-        ("ALU-003", "Gustavo Rojas Morales", "alumno", "22030088", "Ingeniería Mecatrónica", "MEC-801", "activo"),
-        ("ALU-004", "Fernando Javier Ruiz Aguilar", "alumno", "22030105", "Ingeniería Mecatrónica", "MEC-601", "activo"),
+        ("ALU-001", "Carlos Alberto Mendoza Hernández", "alumno", "22030015", "Ingeniería en Electromecánica", "MEC-801", "activo"),
+        ("ALU-002", "Ana Sofía Torres Morales", "alumno", "22030048", "Ingeniería en Electromecánica", "MEC-801", "activo"),
+        ("ALU-003", "Gustavo Rojas Morales", "alumno", "22030088", "Ingeniería en Electromecánica", "MEC-801", "activo"),
+        ("ALU-004", "Fernando Javier Ruiz Aguilar", "alumno", "22030105", "Ingeniería en Electromecánica", "MEC-601", "activo"),
         ("ALU-005", "Diego Ramírez Cruz", "alumno", "22030112", "Ingeniería en Sistemas Computacionales", "SIS-701", "activo"),
-        ("ALU-006", "Valeria Ortiz Domínguez", "alumno", "22030095", "Ingeniería Mecatrónica", "MEC-601", "activo"),
+        ("ALU-006", "Valeria Ortiz Domínguez", "alumno", "22030095", "Ingeniería en Electromecánica", "MEC-601", "activo"),
         ("ALU-007", "Mariana Gómez Almaraz", "alumno", "22030154", "Ingeniería en Sistemas Computacionales", "SIS-701", "activo"),
         ("LIM-001", "Don Pedro Jiménez López", "personal_limpieza", "LIM-ITSOEH-104", "Servicios Generales", None, "activo"),
         ("LIM-002", "Sra. Carmen Bautista Cruz", "personal_limpieza", "LIM-ITSOEH-105", "Servicios Generales", None, "activo")
