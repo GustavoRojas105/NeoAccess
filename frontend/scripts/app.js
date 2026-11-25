@@ -376,7 +376,7 @@ function switchSection(sectionId) {
     teachers: esJefe() ? { title: "Docentes", sub: "Alta y baja de docentes de su carrera" } : { title: "Maestros y Personal", sub: "Docencia y Limpieza" },
     reports: { title: "Generación de Reportes", sub: "Descarga de Evidencias" },
     periodos: { title: "Periodos e Histórico", sub: "Semestres Ene–Jun y Ago–Dic" },
-    admins: { title: "Administradores", sub: "Administradores y jefes de carrera" }
+    admins: { title: "Usuarios", sub: "Administradores, jefes de carrera, docentes, alumnos y personal de limpieza" }
   };
   if (titles[sectionId]) {
     document.getElementById("page-title").textContent = titles[sectionId].title;
