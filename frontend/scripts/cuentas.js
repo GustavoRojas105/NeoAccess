@@ -102,6 +102,7 @@ async function abrirModalCuenta(tipo, userId) {
   document.getElementById("cuenta-modal-submit").textContent = u ? "Guardar cambios" : `Crear ${perfil.nombre}`;
   await pintarSelectsCuenta(tipo, u ? u.carrera : "", u ? u.grupo_id : "");
   revisarPasswordsCuenta();
+  document.querySelectorAll("#modal-cuenta .pw-ojo").forEach(b => verPasswordCuenta(b, true));  // siempre abre ocultas
   openModal("modal-cuenta");
 }
 
@@ -126,6 +127,18 @@ function revisarPasswordsCuenta() {
   msg.classList.toggle("text-red-600", !ok);
   msg.classList.toggle("text-emerald-600", ok);
   return ok;
+}
+
+// Ojito: muestra u oculta la contraseña de su campo
+function verPasswordCuenta(btn, ocultar = false) {
+  const input = document.getElementById(btn.dataset.input);
+  const mostrar = !ocultar && input.type === "password";
+  input.type = mostrar ? "text" : "password";
+  const texto = mostrar ? "Ocultar contraseña" : "Mostrar contraseña";
+  btn.title = texto;
+  btn.setAttribute("aria-label", texto);
+  btn.innerHTML = `<i data-lucide="${mostrar ? "eye-off" : "eye"}" class="w-4 h-4"></i>`;
+  if (window.lucide) lucide.createIcons();
 }
 
 async function toggleCuenta(tipo, userId) {
