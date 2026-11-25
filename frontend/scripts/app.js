@@ -171,7 +171,7 @@ async function loadTeacherPortalView() {
     const data = await apiFetch("/api/portal/teacher-data");
     document.getElementById("docente-portal-name").textContent = data.perfil.nombre;
     document.getElementById("docente-portal-clave").textContent = data.perfil.matricula_clave;
-    document.getElementById("docente-portal-carrera").textContent = data.perfil.carrera || "Área Mecatrónica";
+    document.getElementById("docente-portal-carrera").textContent = data.perfil.carrera || "Sin carrera asignada";
 
     // Clases Asignadas
     const clasesTbody = document.getElementById("table-portal-teacher-classes");
@@ -222,7 +222,7 @@ async function loadStudentPortalView() {
     document.getElementById("alumno-portal-name").textContent = data.perfil.nombre;
     document.getElementById("alumno-portal-matricula").textContent = data.perfil.matricula_clave;
     document.getElementById("alumno-portal-grupo").textContent = data.perfil.grupo_nombre || data.perfil.grupo_id || "N/A";
-    document.getElementById("alumno-portal-carrera").textContent = data.perfil.carrera || "Ingeniería Mecatrónica";
+    document.getElementById("alumno-portal-carrera").textContent = data.perfil.carrera || "Sin carrera asignada";
 
     const faceBadge = document.getElementById("alumno-portal-face-status");
     if (faceBadge) {
