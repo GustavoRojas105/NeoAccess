@@ -101,7 +101,31 @@ async function abrirModalCuenta(tipo, userId) {
     : "Opcional: si la deja vacía, la persona no podrá entrar a su portal hasta que se le asigne una (alumnos y docentes también pueden activarla con su correo @itsoeh.edu.mx).";
   document.getElementById("cuenta-modal-submit").textContent = u ? "Guardar cambios" : `Crear ${perfil.nombre}`;
   await pintarSelectsCuenta(tipo, u ? u.carrera : "", u ? u.grupo_id : "");
+  revisarPasswordsCuenta();
   openModal("modal-cuenta");
+}
+
+// Aviso en vivo debajo de las contraseñas: si no coinciden (o son cortas) no deja guardar
+function revisarPasswordsCuenta() {
+  const p1 = document.getElementById("cuenta-password");
+  const p2 = document.getElementById("cuenta-password2");
+  const msg = document.getElementById("cuenta-pw-match");
+  const a = p1.value, b = p2.value;
+  let texto = "", ok = true;
+  if (a && a.length < 8) { texto = `La contraseña es muy corta (${a.length} de 8 caracteres mínimo).`; ok = false; }
+  else if (b && a !== b) { texto = "Las contraseñas no coinciden."; ok = false; }
+  else if (a && !b) { texto = "Repita la contraseña para confirmarla."; ok = false; }
+  else if (a && a === b) { texto = "✓ Las contraseñas coinciden."; }
+  p2.setCustomValidity(ok ? "" : texto);
+  [p1, p2].forEach(el => {
+    el.classList.toggle("border-red-400", !ok && !!b);
+    el.classList.toggle("border-slate-300", ok || !b);
+  });
+  msg.textContent = texto;
+  msg.classList.toggle("hidden", !texto);
+  msg.classList.toggle("text-red-600", !ok);
+  msg.classList.toggle("text-emerald-600", ok);
+  return ok;
 }
 
 async function toggleCuenta(tipo, userId) {
@@ -123,6 +147,9 @@ async function toggleCuenta(tipo, userId) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  ["cuenta-password", "cuenta-password2"].forEach(id =>
+    document.getElementById(id)?.addEventListener("input", revisarPasswordsCuenta));
+
   document.getElementById("cuenta-carrera")?.addEventListener("change", (e) => {
     if (CUENTA_TIPO === "alumno") pintarGruposCuenta(e.target.value, document.getElementById("cuenta-grupo").value);
   });
@@ -130,8 +157,8 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("form-cuenta")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const pw = document.getElementById("cuenta-password").value;
-    if (pw !== document.getElementById("cuenta-password2").value) {
-      showAlert("Las contraseñas no coinciden.", { type: "error" });
+    if (!revisarPasswordsCuenta()) {
+      document.getElementById("cuenta-password2").focus();
       return;
     }
     const clave = document.getElementById("cuenta-clave").value.trim().toUpperCase();
