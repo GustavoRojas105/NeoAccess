@@ -29,7 +29,8 @@ NeoAccess/
 │   ├── html/                      # index.html (Dashboard) y login.html
 │   ├── styles/style.css
 │   └── scripts/                   # app.js, laboratories.js, devices.js, metrics.js,
-│                                  # schedules.js, users.js (captura facial), reports.js
+│                                  # schedules.js, users.js (captura facial), reports.js,
+│                                  # admins.js, dialogs.js, materias.js
 │
 ├── raspberry_pi/                  # Paquete para la Raspberry Pi Zero W de cada puerta
 │   ├── rpi_main.py                # Nodo de puerta: cámara + reconocimiento + relé GPIO 17
@@ -135,6 +136,14 @@ Desde el Dashboard → menú lateral → **Modo mantenimiento** (el indicador mu
 - Mientras está activo, el Dashboard muestra una barra naranja con un botón para desactivarlo.
 
 ---
+
+## 👤 Administradores
+
+Desde el Dashboard → menú lateral → **Administradores**:
+
+- **Agregar administrador:** nombre, usuario, correo (opcional) y contraseña de mínimo 8 caracteres. El usuario no puede repetirse ni coincidir con la matrícula o clave de un alumno o docente.
+- **Desactivar / Reactivar:** un administrador desactivado sale del sistema de inmediato. Nadie puede desactivarse a sí mismo y siempre debe quedar al menos uno activo.
+- **Cambiar mi contraseña:** pide la contraseña actual y cierra las demás sesiones abiertas de esa cuenta.
 
 ## 🏫 Cómo Agregar un Nuevo Laboratorio Real
 

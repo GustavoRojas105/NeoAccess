@@ -10,7 +10,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
-  <link rel="stylesheet" href="/styles/style.css?v=20261124_07">
+  <link rel="stylesheet" href="/styles/style.css?v=20261124_08">
   <script>
     // Si no hay sesión activa, limpiar DOM, pintar negro y redirigir al login puro
     if (!localStorage.getItem("neoaccess_token") || !localStorage.getItem("neoaccess_user")) {
@@ -75,6 +75,11 @@
           <button data-section="reports" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition">
             <i data-lucide="file-spreadsheet" class="w-4 h-4 text-slate-400"></i>
             <span>Reportes</span>
+          </button>
+
+          <button data-section="admins" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition">
+            <i data-lucide="shield-check" class="w-4 h-4 text-slate-400"></i>
+            <span>Administradores</span>
           </button>
         </nav>
 
@@ -553,6 +558,43 @@
                   </tr>
                 </thead>
                 <tbody id="table-report-results" class="divide-y divide-slate-100 text-slate-700"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ═════════════ ADMINISTRADORES ═════════════ -->
+        <section id="section-admins" class="space-y-6 hidden">
+          <div class="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 class="text-base font-bold text-slate-900">Administradores del sistema</h3>
+                <p class="text-xs text-slate-500">Cuentas con acceso completo al Dashboard. Un administrador desactivado sale del sistema de inmediato.</p>
+              </div>
+              <div class="flex flex-col sm:flex-row gap-2">
+                <button id="btn-open-change-password" type="button" class="flex items-center justify-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50">
+                  <i data-lucide="key-round" class="w-4 h-4"></i> Cambiar mi contraseña
+                </button>
+                <button id="btn-open-add-admin" type="button" class="flex items-center justify-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg bg-slate-900 hover:bg-slate-800 text-white">
+                  <i data-lucide="user-plus" class="w-4 h-4"></i> Agregar administrador
+                </button>
+              </div>
+            </div>
+
+            <div id="cards-admins" class="md:hidden space-y-3"></div>
+            <div class="hidden md:block overflow-x-auto">
+              <table class="w-full text-xs text-left">
+                <thead class="bg-slate-50 text-slate-500 uppercase text-[10px] font-semibold">
+                  <tr>
+                    <th class="px-4 py-3">Nombre</th>
+                    <th class="px-4 py-3">Usuario</th>
+                    <th class="px-4 py-3">Correo</th>
+                    <th class="px-4 py-3">Alta</th>
+                    <th class="px-4 py-3">Estado</th>
+                    <th class="px-4 py-3 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="table-admins" class="divide-y divide-slate-100"></tbody>
               </table>
             </div>
           </div>
@@ -1085,6 +1127,68 @@
   </div>
 
   <!-- ================= MODAL: MODO MANTENIMIENTO ================= -->
+  <!-- Modal: Agregar administrador -->
+  <div id="modal-add-admin" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay p-4 hidden">
+    <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-5 sm:p-6 border border-slate-200 space-y-4 max-h-[95vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+        <h3 class="font-bold text-sm text-slate-900">Agregar administrador</h3>
+        <button type="button" onclick="closeModal('modal-add-admin')" class="text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <form id="form-add-admin" class="space-y-3 text-xs" autocomplete="off">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Nombre completo *</label>
+          <input type="text" id="admin-new-nombre" required minlength="3" maxlength="120" placeholder="Mtra. Ana López" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Usuario para iniciar sesión *</label>
+          <input type="text" id="admin-new-username" required minlength="3" maxlength="40" pattern="[A-Za-z0-9._\-]+" placeholder="ana.lopez" autocapitalize="none" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+          <p class="text-[10px] text-slate-400 mt-1">Solo letras, números, punto, guion y guion bajo.</p>
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Correo</label>
+          <input type="email" id="admin-new-email" maxlength="120" placeholder="ana.lopez@itsoeh.edu.mx" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Contraseña *</label>
+            <input type="password" id="admin-new-password" required minlength="8" maxlength="128" autocomplete="new-password" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Repetir contraseña *</label>
+            <input type="password" id="admin-new-password2" required minlength="8" maxlength="128" autocomplete="new-password" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+          </div>
+        </div>
+        <p class="text-[10px] text-slate-500">Mínimo 8 caracteres. Entréguela a la persona en privado; podrá cambiarla desde esta misma sección.</p>
+        <button type="submit" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-lg">Crear administrador</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Cambiar mi contraseña -->
+  <div id="modal-change-password" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay p-4 hidden">
+    <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full p-5 sm:p-6 border border-slate-200 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+        <h3 class="font-bold text-sm text-slate-900">Cambiar mi contraseña</h3>
+        <button type="button" onclick="closeModal('modal-change-password')" class="text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <form id="form-change-password" class="space-y-3 text-xs">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Contraseña actual *</label>
+          <input type="password" id="pw-actual" required maxlength="128" autocomplete="current-password" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Nueva contraseña *</label>
+          <input type="password" id="pw-nueva" required minlength="8" maxlength="128" autocomplete="new-password" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Repetir nueva contraseña *</label>
+          <input type="password" id="pw-nueva2" required minlength="8" maxlength="128" autocomplete="new-password" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
+        </div>
+        <button type="submit" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-lg">Guardar contraseña</button>
+      </form>
+    </div>
+  </div>
+
   <div id="modal-maintenance" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay p-4 hidden">
     <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-5 sm:p-6 border border-slate-200 space-y-4">
       <div class="flex items-center justify-between border-b border-slate-200 pb-3">
@@ -1192,14 +1296,15 @@
   </div>
 
   <!-- Scripts modulares de la aplicación con cache-busting -->
-  <script src="/scripts/dialogs.js?v=20261124_07"></script>
-  <script src="/scripts/materias.js?v=20261124_07"></script>
-  <script src="/scripts/app.js?v=20261124_07"></script>
-  <script src="/scripts/laboratories.js?v=20261124_07"></script>
-  <script src="/scripts/metrics.js?v=20261124_07"></script>
-  <script src="/scripts/devices.js?v=20261124_07"></script>
-  <script src="/scripts/schedules.js?v=20261124_07"></script>
-  <script src="/scripts/users.js?v=20261124_07"></script>
-  <script src="/scripts/reports.js?v=20261124_07"></script>
+  <script src="/scripts/dialogs.js?v=20261124_08"></script>
+  <script src="/scripts/materias.js?v=20261124_08"></script>
+  <script src="/scripts/app.js?v=20261124_08"></script>
+  <script src="/scripts/laboratories.js?v=20261124_08"></script>
+  <script src="/scripts/metrics.js?v=20261124_08"></script>
+  <script src="/scripts/devices.js?v=20261124_08"></script>
+  <script src="/scripts/schedules.js?v=20261124_08"></script>
+  <script src="/scripts/users.js?v=20261124_08"></script>
+  <script src="/scripts/reports.js?v=20261124_08"></script>
+  <script src="/scripts/admins.js?v=20261124_08"></script>
 </body>
 </html>

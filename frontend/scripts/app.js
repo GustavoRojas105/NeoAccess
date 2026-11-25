@@ -55,7 +55,10 @@ async function apiFetch(endpoint, options = {}) {
   }
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(errorData.detail || "Error en la petición al servidor");
+    const detalle = Array.isArray(errorData.detail)
+      ? "Revise los datos: " + errorData.detail.map(d => (d.loc || []).slice(-1)[0] + " " + (d.msg || "")).join("; ")
+      : errorData.detail;
+    throw new Error(detalle || "Error en la petición al servidor");
   }
   return res.json();
 }
@@ -331,7 +334,7 @@ function setupNavigation() {
 
 function switchSection(sectionId) {
   STATE.currentSection = sectionId;
-  const sections = ["metrics", "devices", "laboratories", "schedules", "students", "teachers", "reports"];
+  const sections = ["metrics", "devices", "laboratories", "schedules", "students", "teachers", "reports", "admins"];
 
   sections.forEach(s => {
     const secEl = document.getElementById(`section-${s}`);
@@ -363,7 +366,8 @@ function switchSection(sectionId) {
     schedules: { title: "Horarios y Grupos", sub: "Validación de Acceso" },
     students: { title: "Control de Alumnos", sub: "Pase de Lista Digital" },
     teachers: { title: "Maestros y Personal", sub: "Docencia y Limpieza" },
-    reports: { title: "Generación de Reportes", sub: "Descarga de Evidencias" }
+    reports: { title: "Generación de Reportes", sub: "Descarga de Evidencias" },
+    admins: { title: "Administradores", sub: "Cuentas con acceso al Dashboard" }
   };
   if (titles[sectionId]) {
     document.getElementById("page-title").textContent = titles[sectionId].title;
@@ -381,6 +385,7 @@ function refreshActiveSection() {
   else if (STATE.currentSection === "students") loadStudentsData();
   else if (STATE.currentSection === "teachers") loadTeachersData();
   else if (STATE.currentSection === "reports") loadReportsDropdowns();
+  else if (STATE.currentSection === "admins") loadAdminsData();
 }
 
 // -------------------------------------------------------------

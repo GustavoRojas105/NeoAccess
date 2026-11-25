@@ -26,6 +26,17 @@ class MaintenancePayload(BaseModel):
     activo: bool
     mensaje: Optional[str] = Field(None, max_length=300)
 
+class AdminCreate(BaseModel):
+    """Alta de otro administrador desde el Dashboard."""
+    username: str = Field(..., min_length=3, max_length=40, pattern=r"^[A-Za-z0-9._-]+$")
+    nombre: str = Field(..., min_length=3, max_length=120)
+    email: Optional[str] = Field(None, max_length=120)
+    password: str = Field(..., min_length=8, max_length=128)
+
+class PasswordChange(BaseModel):
+    actual: str = Field(..., max_length=128)
+    nueva: str = Field(..., min_length=8, max_length=128)
+
 class LabCreate(BaseModel):
     id: str
     nombre: str

@@ -137,6 +137,14 @@ def destroy_session(token: str) -> bool:
         return True
     return False
 
+def destroy_sessions_for(rol: str, user_id, except_token: str = None) -> int:
+    """Cierra todas las sesiones de una cuenta (p. ej. al desactivar un administrador)."""
+    tokens = [t for t, s in ACTIVE_SESSIONS.items()
+              if s.get("rol") == rol and s.get("user_id") == user_id and t != except_token]
+    for t in tokens:
+        del ACTIVE_SESSIONS[t]
+    return len(tokens)
+
 def generate_device_token() -> str:
     """Genera una clave de API única para cada Raspberry Pi Zero W."""
     return f"neo_pi_{secrets.token_hex(16)}"

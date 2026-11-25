@@ -28,11 +28,11 @@ from database.database import get_connection, init_db
 from backend.mailer import send_email
 from backend.auth import (
     hash_password, verify_password, needs_rehash, create_session,
-    validate_session, destroy_session, generate_device_token,
+    validate_session, destroy_session, destroy_sessions_for, generate_device_token,
     login_locked_seconds, register_failed_login, reset_failed_logins
 )
 from backend.models import (
-    LoginRequest, RegisterRequest, ResendVerificationRequest, MaintenancePayload, LabCreate, LabUpdate, DeviceCreate, GroupCreate,
+    LoginRequest, RegisterRequest, AdminCreate, PasswordChange, ResendVerificationRequest, MaintenancePayload, LabCreate, LabUpdate, DeviceCreate, GroupCreate,
     UserCreate, FacialMetadataCreate, FacialCapturePayload, ScheduleCreate,
     HeartbeatPayload, AccessAttemptPayload, CleaningPayload, CommandAckPayload
 )
@@ -167,7 +167,7 @@ def login(payload: LoginRequest, request: Request):
     cursor = conn.cursor()
 
     # 1. Intentar como Administrador
-    cursor.execute("SELECT * FROM administradores WHERE username = ? AND activo = 1", (payload.username,))
+    cursor.execute("SELECT * FROM administradores WHERE lower(username) = lower(?) AND activo = 1", (payload.username.strip(),))
     admin = cursor.fetchone()
     if admin and verify_password(payload.password, admin["password_hash"]):
         if needs_rehash(admin["password_hash"]):
@@ -1453,6 +1453,93 @@ async def integrity_error_handler(request: Request, exc: sqlite3.IntegrityError)
     else:
         detalle = f"Datos inválidos: {msg}"
     return JSONResponse(status_code=400, content={"detail": detalle})
+
+# -------------------------------------------------------------
+# ADMINISTRADORES (alta, activar/desactivar, cambio de contraseña)
+# -------------------------------------------------------------
+@app.get("/api/admins")
+def list_admins(admin: dict = Depends(get_current_admin)):
+    conn = get_connection()
+    try:
+        rows = conn.execute("""
+        SELECT id, username, nombre, email, activo, fecha_creacion
+        FROM administradores ORDER BY activo DESC, nombre;
+        """).fetchall()
+    finally:
+        conn.close()
+    return [{**dict(r), "es_yo": r["id"] == admin.get("user_id")} for r in rows]
+
+@app.post("/api/admins")
+def create_admin(payload: AdminCreate, admin: dict = Depends(get_current_admin)):
+    username = payload.username.strip().lower()
+    nombre = " ".join(payload.nombre.split())
+    email = (payload.email or "").strip().lower() or None
+    if email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        raise HTTPException(status_code=400, detail="El correo no tiene un formato válido.")
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM administradores WHERE lower(username) = ?", (username,))
+        if cur.fetchone():
+            raise HTTPException(status_code=400, detail=f"Ya existe un administrador con el usuario '{username}'.")
+        # Evita que el usuario choque con la matrícula/clave de un alumno o docente al iniciar sesión
+        cur.execute("SELECT 1 FROM usuarios WHERE lower(matricula_clave) = ? OR lower(id) = ?", (username, username))
+        if cur.fetchone():
+            raise HTTPException(status_code=400, detail="Ese usuario coincide con la matrícula o clave de un alumno/docente. Elija otro.")
+        cur.execute("""
+        INSERT INTO administradores (username, password_hash, nombre, email, activo, fecha_creacion)
+        VALUES (?, ?, ?, ?, 1, ?);
+        """, (username, hash_password(payload.password), nombre, email, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"success": True, "message": f"Administrador '{username}' creado. Ya puede iniciar sesión."}
+
+@app.post("/api/admins/{admin_id}/toggle")
+def toggle_admin(admin_id: int, admin: dict = Depends(get_current_admin)):
+    if admin_id == admin.get("user_id"):
+        raise HTTPException(status_code=400, detail="No puede desactivar su propia cuenta.")
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id, username, activo FROM administradores WHERE id = ?", (admin_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Administrador no encontrado.")
+        nuevo = 0 if row["activo"] else 1
+        if nuevo == 0:
+            cur.execute("SELECT COUNT(*) FROM administradores WHERE activo = 1 AND id != ?", (admin_id,))
+            if cur.fetchone()[0] == 0:
+                raise HTTPException(status_code=400, detail="Debe quedar al menos un administrador activo.")
+        cur.execute("UPDATE administradores SET activo = ? WHERE id = ?", (nuevo, admin_id))
+        conn.commit()
+    finally:
+        conn.close()
+    if nuevo == 0:
+        destroy_sessions_for("administrador", admin_id)  # lo saca del sistema de inmediato
+    return {"success": True, "activo": nuevo,
+            "message": f"Administrador '{row['username']}' {'reactivado' if nuevo else 'desactivado'}."}
+
+@app.post("/api/admins/me/password")
+def change_own_password(payload: PasswordChange, authorization: Optional[str] = Header(None),
+                        admin: dict = Depends(get_current_admin)):
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT password_hash FROM administradores WHERE id = ?", (admin.get("user_id"),))
+        row = cur.fetchone()
+        if not row or not verify_password(payload.actual, row["password_hash"]):
+            raise HTTPException(status_code=400, detail="La contraseña actual no es correcta.")
+        if payload.actual == payload.nueva:
+            raise HTTPException(status_code=400, detail="La nueva contraseña debe ser distinta a la actual.")
+        cur.execute("UPDATE administradores SET password_hash = ? WHERE id = ?",
+                    (hash_password(payload.nueva), admin.get("user_id")))
+        conn.commit()
+    finally:
+        conn.close()
+    token = (authorization or "").replace("Bearer ", "").strip()
+    destroy_sessions_for("administrador", admin.get("user_id"), except_token=token)  # cierra otras sesiones
+    return {"success": True, "message": "Contraseña actualizada. Se cerraron sus otras sesiones abiertas."}
 
 @app.get("/api/groups")
 def get_groups(admin: dict = Depends(get_current_admin)):
