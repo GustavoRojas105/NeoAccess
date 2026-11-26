@@ -901,6 +901,33 @@
         <!-- Acceso de hoy (se actualiza solo) -->
         <div id="teacher-today" class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm"></div>
 
+        <!-- Descargar pase de lista (Excel / PDF) -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+            <h4 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <i data-lucide="clipboard-list" class="w-4 h-4 text-slate-500"></i>
+              <span>Descargar pase de lista</span>
+            </h4>
+            <label class="flex items-center gap-2 text-xs text-slate-500">
+              <span>Día</span>
+              <input type="date" id="pase-fecha" onchange="pintarPaseDeLista()"
+                class="text-xs bg-slate-50 border border-slate-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-slate-700">
+            </label>
+          </div>
+          <div id="pase-lista-clases" class="divide-y divide-slate-100"></div>
+          <div id="pase-lista-todas" class="hidden p-3 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <span class="text-slate-500">Todas las clases del día en un solo archivo (una hoja o página por grupo)</span>
+            <div class="flex gap-2">
+              <button type="button" onclick="descargarPaseDeLista('xlsx')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">
+                <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> Excel
+              </button>
+              <button type="button" onclick="descargarPaseDeLista('pdf')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-semibold">
+                <i data-lucide="file-text" class="w-3.5 h-3.5"></i> PDF
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- Pase de Lista en Tiempo Real de Alumnos -->
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div class="p-4 border-b border-slate-200 flex items-center justify-between">
@@ -1770,7 +1797,7 @@ bash neoaccess/setup_rpi.sh</pre>
   <script src="/scripts/dialogs.js?v=20261124_11"></script>
   <script src="/scripts/materias.js?v=20261125_1"></script>
   <script src="/scripts/eliminar.js?v=20261124_11"></script>
-  <script src="/scripts/app.js?v=20261125_2"></script>
+  <script src="/scripts/app.js?v=20261126_1"></script>
   <script src="/scripts/laboratories.js?v=20261124_11"></script>
   <script src="/scripts/metrics.js?v=20261125_1"></script>
   <script src="/scripts/devices.js?v=20261125_3"></script>

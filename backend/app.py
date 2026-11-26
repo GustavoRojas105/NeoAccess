@@ -33,7 +33,7 @@ from backend.auth import (
     login_locked_seconds, register_failed_login, reset_failed_logins
 )
 from backend.models import (
-    LoginRequest, RegisterRequest, AdminCreate, PasswordChange, JefeCreate, JefeCarreras, GroupUpdate, ResendVerificationRequest, VerifyCodeRequest, PasswordResetRequest, MaintenancePayload, LabCreate, LabUpdate, DeviceCreate, GroupCreate,
+    LoginRequest, GoogleLoginRequest, RegisterRequest, AdminCreate, PasswordChange, JefeCreate, JefeCarreras, GroupUpdate, ResendVerificationRequest, VerifyCodeRequest, PasswordResetRequest, MaintenancePayload, LabCreate, LabUpdate, DeviceCreate, GroupCreate,
     UserCreate, FacialMetadataCreate, FacialCapturePayload, ScheduleCreate,
     HeartbeatPayload, AccessAttemptPayload, CleaningPayload, CommandAckPayload
 )
@@ -223,23 +223,16 @@ def login(payload: LoginRequest, request: Request):
     cursor.execute("SELECT * FROM jefes_carrera WHERE lower(username) = lower(?) AND activo = 1", (payload.username.strip(),))
     jefe = cursor.fetchone()
     if jefe and verify_password(payload.password, jefe["password_hash"]):
-        state = get_maintenance_state()
-        if state["activo"]:
-            conn.close()
-            raise maintenance_exception(state)
-        carreras = [r["carrera"] for r in cursor.execute(
-            "SELECT carrera FROM jefe_carreras WHERE jefe_id = ? ORDER BY carrera", (jefe["id"],))]
         if needs_rehash(jefe["password_hash"]):
             cursor.execute("UPDATE jefes_carrera SET password_hash = ? WHERE id = ?",
                            (hash_password(payload.password), jefe["id"]))
             conn.commit()
-        conn.close()
+        try:
+            respuesta = _sesion_jefe(cursor, jefe)
+        finally:
+            conn.close()
         reset_failed_logins(client_ip, payload.username)
-        token = create_session(jefe["username"], jefe["id"], jefe["nombre"], rol="jefe_carrera",
-                               extra_data={"email": jefe["email"], "carreras": carreras})
-        return {"success": True, "token": token, "admin": {
-            "id": jefe["id"], "username": jefe["username"], "nombre": jefe["nombre"],
-            "email": jefe["email"], "rol": "jefe_carrera", "carreras": carreras}}
+        return respuesta
 
     # 3. Intentar como Usuario Institucional (Docente, Alumno o Limpieza)
     cursor.execute("""
@@ -251,52 +244,146 @@ def login(payload: LoginRequest, request: Request):
     user = cursor.fetchone()
 
     if user and user["password_hash"] and verify_password(payload.password, user["password_hash"]):
-        state = get_maintenance_state()
-        if state["activo"]:
-            conn.close()
-            raise maintenance_exception(state)
-        if "cuenta_aprobada" in user.keys() and user["cuenta_aprobada"] == 0:
-            conn.close()
-            raise HTTPException(
-                status_code=403,
-                detail="Tu correo ya está verificado, pero la cuenta de docente espera la aprobación del administrador."
-            )
         if needs_rehash(user["password_hash"]):
             cursor.execute("UPDATE usuarios SET password_hash = ? WHERE id = ?",
                            (hash_password(payload.password), user["id"]))
             conn.commit()
         conn.close()
+        respuesta = _sesion_usuario(user)
         reset_failed_logins(client_ip, payload.username)
-        token = create_session(
-            username=user["matricula_clave"],
-            user_id=user["id"],
-            nombre=user["nombre_completo"],
-            rol=user["tipo"],
-            extra_data={
-                "matricula_clave": user["matricula_clave"],
-                "carrera": user["carrera"],
-                "grupo_id": user["grupo_id"],
-                "grupo_nombre": user["grupo_nombre"]
-            }
-        )
-        return {
-            "success": True,
-            "token": token,
-            "admin": {
-                "id": user["id"],
-                "username": user["matricula_clave"],
-                "nombre": user["nombre_completo"],
-                "matricula_clave": user["matricula_clave"],
-                "carrera": user["carrera"],
-                "grupo_id": user["grupo_id"],
-                "grupo_nombre": user["grupo_nombre"],
-                "rol": user["tipo"]
-            }
-        }
+        return respuesta
 
     conn.close()
     register_failed_login(client_ip, payload.username)
     raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos.")
+
+def _sesion_admin(admin) -> dict:
+    token = create_session(admin["username"], admin["id"], admin["nombre"], rol="administrador",
+                           extra_data={"email": admin["email"]})
+    return {"success": True, "token": token, "admin": {
+        "id": admin["id"], "username": admin["username"], "nombre": admin["nombre"],
+        "email": admin["email"], "rol": "administrador"}}
+
+
+def _sesion_jefe(cursor, jefe) -> dict:
+    state = get_maintenance_state()
+    if state["activo"]:
+        raise maintenance_exception(state)
+    carreras = [r["carrera"] for r in cursor.execute(
+        "SELECT carrera FROM jefe_carreras WHERE jefe_id = ? ORDER BY carrera", (jefe["id"],))]
+    token = create_session(jefe["username"], jefe["id"], jefe["nombre"], rol="jefe_carrera",
+                           extra_data={"email": jefe["email"], "carreras": carreras})
+    return {"success": True, "token": token, "admin": {
+        "id": jefe["id"], "username": jefe["username"], "nombre": jefe["nombre"],
+        "email": jefe["email"], "rol": "jefe_carrera", "carreras": carreras}}
+
+
+def _sesion_usuario(user) -> dict:
+    """Sesión de alumno, docente o personal (user trae grupo_nombre)."""
+    state = get_maintenance_state()
+    if state["activo"]:
+        raise maintenance_exception(state)
+    if "cuenta_aprobada" in user.keys() and user["cuenta_aprobada"] == 0:
+        raise HTTPException(
+            status_code=403,
+            detail="Tu correo ya está verificado, pero la cuenta de docente espera la aprobación del administrador."
+        )
+    token = create_session(
+        username=user["matricula_clave"],
+        user_id=user["id"],
+        nombre=user["nombre_completo"],
+        rol=user["tipo"],
+        extra_data={
+            "matricula_clave": user["matricula_clave"],
+            "carrera": user["carrera"],
+            "grupo_id": user["grupo_id"],
+            "grupo_nombre": user["grupo_nombre"]
+        }
+    )
+    return {
+        "success": True,
+        "token": token,
+        "admin": {
+            "id": user["id"],
+            "username": user["matricula_clave"],
+            "nombre": user["nombre_completo"],
+            "matricula_clave": user["matricula_clave"],
+            "carrera": user["carrera"],
+            "grupo_id": user["grupo_id"],
+            "grupo_nombre": user["grupo_nombre"],
+            "rol": user["tipo"]
+        }
+    }
+
+
+# -------------------------------------------------------------
+# INICIO DE SESIÓN CON GOOGLE (solo cuentas @itsoeh.edu.mx)
+# Requiere NEOACCESS_GOOGLE_CLIENT_ID en config_servidor.env (ID de cliente OAuth web).
+# -------------------------------------------------------------
+_GOOGLE_EMISORES = ("accounts.google.com", "https://accounts.google.com")
+
+
+def _google_client_id() -> str:
+    return (os.environ.get("NEOACCESS_GOOGLE_CLIENT_ID") or "").strip()
+
+
+def _verificar_token_google(credential: str) -> dict:
+    """Valida el ID token con Google y devuelve sus datos. Lanza 401 si no es válido."""
+    import requests
+    try:
+        r = requests.get("https://oauth2.googleapis.com/tokeninfo",
+                         params={"id_token": credential}, timeout=8)
+    except Exception:
+        raise HTTPException(status_code=503, detail="No se pudo contactar a Google. Revise la conexión a internet del servidor.")
+    if r.status_code != 200:
+        raise HTTPException(status_code=401, detail="Google no aceptó el inicio de sesión. Inténtalo de nuevo.")
+    return r.json()
+
+
+@app.get("/api/auth/google-config")
+def google_config():
+    """El login muestra el botón de Google solo si hay un ID de cliente configurado."""
+    cid = _google_client_id()
+    return {"habilitado": bool(cid), "client_id": cid or None, "dominio": DOMINIO_INSTITUCIONAL}
+
+
+@app.post("/api/auth/google")
+def login_google(payload: GoogleLoginRequest):
+    cid = _google_client_id()
+    if not cid:
+        raise HTTPException(status_code=404, detail="El inicio de sesión con Google no está configurado.")
+    info = _verificar_token_google(payload.credential)
+    correo = str(info.get("email") or "").strip().lower()
+    try:
+        vence = int(info.get("exp") or 0)
+    except (TypeError, ValueError):
+        vence = 0
+    if (info.get("aud") != cid or info.get("iss") not in _GOOGLE_EMISORES or vence < time.time()
+            or str(info.get("email_verified")).lower() != "true"):
+        raise HTTPException(status_code=401, detail="El inicio de sesión de Google no es válido. Inténtalo de nuevo.")
+    if info.get("hd") != DOMINIO_INSTITUCIONAL or not _CORREO_RE.match(correo):
+        raise HTTPException(status_code=403,
+                            detail=f"Solo se puede entrar con tu cuenta institucional @{DOMINIO_INSTITUCIONAL}.")
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        user = cursor.execute("""
+            SELECT u.*, g.nombre as grupo_nombre FROM usuarios u LEFT JOIN grupos g ON u.grupo_id = g.id
+            WHERE lower(u.correo) = ? AND u.estado = 'activo'""", (correo,)).fetchone()
+        if user:
+            return _sesion_usuario(user)
+        jefe = cursor.execute("SELECT * FROM jefes_carrera WHERE lower(email) = ? AND activo = 1", (correo,)).fetchone()
+        if jefe:
+            return _sesion_jefe(cursor, jefe)
+        admin = cursor.execute("SELECT * FROM administradores WHERE lower(email) = ? AND activo = 1", (correo,)).fetchone()
+        if admin:
+            return _sesion_admin(admin)
+    finally:
+        conn.close()
+    raise HTTPException(status_code=404,
+                        detail=f"{correo} todavía no tiene cuenta en NeoAccess. Créala en «Crear cuenta».")
+
 
 @app.post("/api/auth/logout")
 def logout(authorization: Optional[str] = Header(None)):
@@ -864,6 +951,43 @@ def get_teacher_portal(user: dict = Depends(require_role("docente"))):
         "confirmaciones_docente": confirmaciones,
         "pase_de_lista_alumnos": alumnos_asistencias
     }
+
+@app.get("/api/portal/teacher/attendance-list")
+def download_attendance_list(
+    formato: str = Query("xlsx", pattern="^(xlsx|pdf)$"),
+    fecha: Optional[str] = None,
+    horario_id: Optional[int] = None,
+    user: dict = Depends(require_role("docente"))
+):
+    """Pase de lista del docente para un día (hoy por defecto) en Excel o PDF.
+    Una hoja/página por cada clase de ese día; con horario_id, solo esa clase."""
+    from backend import pase_lista
+    try:
+        dia = datetime.strptime(fecha, "%Y-%m-%d").date() if fecha else datetime.now().date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Fecha inválida (use AAAA-MM-DD).")
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        periodo = periodo_activo(cursor)
+        clases = pase_lista.clases_del_dia(cursor, user["user_id"], periodo["id"], dia,
+                                           TOLERANCIA_ENTRADA_MIN, horario_id=horario_id)
+    finally:
+        conn.close()
+    if not clases:
+        raise HTTPException(status_code=404,
+                            detail=f"No tienes clases el {pase_lista.fecha_larga(dia)}.")
+    docente = user.get("nombre") or ""
+    if formato == "pdf":
+        contenido = pase_lista.generar_pdf(clases, docente, dia, periodo["nombre"])
+        tipo = "application/pdf"
+    else:
+        contenido = pase_lista.generar_excel(clases, docente, dia, periodo["nombre"])
+        tipo = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    sufijo = f"_{clases[0]['grupo_clave']}" if horario_id is not None and clases[0].get("grupo_clave") else ""
+    nombre = re.sub(r"[^A-Za-z0-9_.-]", "-", f"pase_lista_{dia.isoformat()}{sufijo}.{formato}")
+    return Response(content=contenido, media_type=tipo,
+                    headers={"Content-Disposition": f'attachment; filename="{nombre}"'})
 
 @app.get("/api/portal/cleaning-data")
 def get_cleaning_portal(user: dict = Depends(require_role("personal_limpieza"))):

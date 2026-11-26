@@ -6,6 +6,8 @@ python-multipart>=0.0.9
 requests>=2.28
 # Plantilla de Excel para importar horarios
 openpyxl>=3.1
+# Pase de lista del docente en PDF
+fpdf2>=2.7
 # Registro facial real desde el Dashboard (YuNet + SFace)
 numpy>=1.26
 opencv-python-headless>=4.8

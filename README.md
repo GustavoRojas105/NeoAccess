@@ -117,6 +117,10 @@ Alumnos y docentes crean su cuenta en la pestaña **Crear cuenta** del login:
 - Si el administrador ya había dado de alta la matrícula (sin contraseña), el registro se vincula a ese mismo alumno en lugar de duplicarlo.
 - Se aceptan como máximo 5 solicitudes por hora desde la misma IP.
 
+**Continuar con Google** (opcional): con `NEOACCESS_GOOGLE_CLIENT_ID` en `config_servidor.env` aparece el botón en el login. Solo entran cuentas `@itsoeh.edu.mx` que ya existen en NeoAccess (por registro o porque el administrador les puso ese correo). Google solo permite el botón en `http://localhost` o en una dirección `https://` con dominio; no funciona con la IP de la red.
+
+**Pase de lista (portal del docente):** en *Descargar pase de lista* se elige el día y se baja cada clase, o todas juntas, en **Excel** o **PDF**: alumnos del grupo con su hora de entrada por la puerta, Presente / Falta, entrada del docente y espacio para firma.
+
 **¿Olvidaste tu contraseña?** (en el login): llega un código de 6 dígitos al correo institucional de la cuenta (alumnos, docentes y jefes de carrera) y con él se pone una contraseña nueva. Al cambiarla se cierran las sesiones abiertas. La respuesta es la misma exista o no la cuenta, para no revelar qué correos están registrados.
 
 **Configurar el envío de correos:**

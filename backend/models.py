@@ -10,6 +10,10 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
+class GoogleLoginRequest(BaseModel):
+    """ID token (JWT) que entrega el botón «Continuar con Google»."""
+    credential: str = Field(..., min_length=20, max_length=4096)
+
 class RegisterRequest(BaseModel):
     """Autoregistro de alumnos y docentes con correo institucional @itsoeh.edu.mx."""
     nombre_completo: str = Field(..., min_length=3, max_length=120)

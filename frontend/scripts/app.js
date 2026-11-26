@@ -185,6 +185,73 @@ function pintarPeriodo(periodo) {
   });
 }
 
+// ── Pase de lista descargable (Excel / PDF) ──
+let PASE_CLASES = [];
+const DIAS_SEMANA = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+
+function diaDeFecha(iso) {
+  const [a, m, d] = (iso || "").split("-").map(Number);
+  return a ? DIAS_SEMANA[new Date(a, m - 1, d).getDay()] : "";
+}
+
+function pintarPaseDeLista() {
+  const cont = document.getElementById("pase-lista-clases");
+  const todas = document.getElementById("pase-lista-todas");
+  if (!cont) return;
+  const fecha = document.getElementById("pase-fecha").value;
+  const dia = diaDeFecha(fecha);
+  const clases = PASE_CLASES.filter(c => c.dia_semana === dia)
+    .sort((a, b) => a.hora_inicio.localeCompare(b.hora_inicio));
+  todas.classList.toggle("hidden", clases.length < 2);
+  if (!clases.length) {
+    cont.innerHTML = `<p class="p-6 text-center text-xs text-slate-400">No tienes clases el ${esc(dia || "día elegido")}.</p>`;
+    return;
+  }
+  cont.innerHTML = clases.map(c => `
+    <div class="p-3 sm:px-4 flex flex-wrap items-center justify-between gap-3">
+      <div class="min-w-0">
+        <p class="text-sm font-semibold text-slate-900 truncate">${esc(c.materia)}</p>
+        <p class="text-[11px] text-slate-500">
+          <span class="font-mono">${esc(c.hora_inicio.slice(0, 5))}–${esc(c.hora_fin.slice(0, 5))}</span>
+          · Grupo <strong>${esc(c.grupo_clave || c.grupo_id || "—")}</strong> · ${esc(c.laboratorio_nombre)}
+        </p>
+      </div>
+      <div class="flex gap-2 shrink-0">
+        <button type="button" onclick="descargarPaseDeLista('xlsx', ${Number(c.id)}, '${esc(c.grupo_clave || "")}')"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 font-semibold">
+          <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> Excel
+        </button>
+        <button type="button" onclick="descargarPaseDeLista('pdf', ${Number(c.id)}, '${esc(c.grupo_clave || "")}')"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-red-300 text-red-700 bg-red-50 hover:bg-red-100 font-semibold">
+          <i data-lucide="file-text" class="w-3.5 h-3.5"></i> PDF
+        </button>
+      </div>
+    </div>`).join("");
+  if (window.lucide) lucide.createIcons();
+}
+
+async function descargarPaseDeLista(formato, horarioId, grupo) {
+  const fecha = document.getElementById("pase-fecha").value;
+  const params = new URLSearchParams({ formato });
+  if (fecha) params.set("fecha", fecha);
+  if (horarioId) params.set("horario_id", horarioId);
+  try {
+    const res = await fetch(`/api/portal/teacher/attendance-list?${params}`,
+      { headers: { Authorization: `Bearer ${STATE.token}` } });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `pase_lista_${fecha}${grupo ? "_" + grupo : ""}.${formato}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (err) {
+    showAlert("No se pudo descargar el pase de lista: " + err.message, { type: "error" });
+  }
+}
+
 async function loadTeacherPortalView() {
   try {
     const data = await apiFetch("/api/portal/teacher-data");
@@ -192,6 +259,11 @@ async function loadTeacherPortalView() {
     document.getElementById("docente-portal-clave").textContent = data.perfil.matricula_clave;
     document.getElementById("docente-portal-carrera").textContent = data.perfil.carrera || "Sin carrera asignada";
     pintarPeriodo(data.periodo);
+
+    PASE_CLASES = data.clases_asignadas || [];
+    const campoFecha = document.getElementById("pase-fecha");
+    if (campoFecha && !campoFecha.value) campoFecha.value = (data.ahora || "").slice(0, 10);
+    pintarPaseDeLista();
 
     renderPortalTimetable(data.clases_asignadas, {
       gridId: "teacher-timetable", hoyId: "teacher-today", rol: "docente",

@@ -387,6 +387,120 @@ class TestCodigosPorCorreo(Base):
         self.assertEqual(r.status_code, 400)
 
 
+class TestPaseDeLista(Base):
+    """El docente descarga el pase de lista del día en Excel o PDF."""
+    FECHA = "2026-11-28"   # sábado
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        from _entorno import bd
+        r = C.post("/api/schedules", headers=cls.A, json={
+            "grupo_id": "ISC-501", "laboratorio_id": "LAB-RED", "docente_id": "DOC-ISC",
+            "materia": "Programación Web", "dia_semana": "Sábado", "hora_inicio": "16:00", "hora_fin": "18:00"})
+        assert r.status_code == 200, r.text
+        cls.horario = r.json().get("id")
+        c = bd()
+        if not cls.horario:
+            cls.horario = c.execute("SELECT id FROM horarios WHERE docente_id = 'DOC-ISC' AND dia_semana = 'Sábado' AND hora_inicio = '16:00'").fetchone()[0]
+        # entrada del alumno dentro de la tolerancia (15:52) y del docente a las 15:55
+        for uid, hora in (("AL-1", "15:52:10"), ("DOC-ISC", "15:55:00")):
+            c.execute("""INSERT INTO registros_acceso (usuario_id, laboratorio_id, dispositivo_id, fecha_hora, resultado, motivo)
+                         VALUES (?, 'LAB-RED', 'RPI-RED', ?, 'permitido', 'prueba')""", (uid, f"{cls.FECHA} {hora}"))
+        c.commit()
+        c.close()
+
+    def bajar(self, H, **params):
+        return C.get("/api/portal/teacher/attendance-list", headers=H, params=params)
+
+    def test_excel_con_asistencia(self):
+        import openpyxl
+        r = self.bajar(self.DO, formato="xlsx", fecha=self.FECHA, horario_id=self.horario)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertIn("spreadsheetml", r.headers["content-type"])
+        self.assertIn("pase_lista_2026-11-28_ISC-501.xlsx", r.headers["content-disposition"])
+        ws = openpyxl.load_workbook(io.BytesIO(r.content)).active
+        filas = [[c.value for c in f] for f in ws.iter_rows()]
+        alumno = [f for f in filas if f[1] == "22030001"][0]
+        self.assertEqual((alumno[3], alumno[4]), ("15:52", "Presente"))
+        datos = {f[0]: f[1] for f in filas if f[0] and f[1]}
+        self.assertEqual(datos["Entrada del docente"], "15:55")
+        self.assertTrue(datos["Asistencia"].startswith("1 de "))   # otras pruebas agregan alumnos al grupo
+
+    def test_pdf_de_una_clase(self):
+        r = self.bajar(self.DO, formato="pdf", fecha=self.FECHA, horario_id=self.horario)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertTrue(r.content.startswith(b"%PDF"))
+        self.assertIn("ISC-501", r.headers["content-disposition"])
+
+    def test_sin_clases_ese_dia_y_fecha_invalida(self):
+        self.assertEqual(self.bajar(self.DO, formato="pdf", fecha="2026-11-29").status_code, 404)   # domingo
+        self.assertEqual(self.bajar(self.DO, formato="pdf", fecha="29/11/2026").status_code, 400)
+        self.assertEqual(self.bajar(self.DO, formato="doc", fecha=self.FECHA).status_code, 422)
+
+    def test_solo_el_docente_y_solo_sus_clases(self):
+        self.assertEqual(self.bajar(self.AL, formato="xlsx", fecha=self.FECHA).status_code, 403)
+        self.assertEqual(self.bajar(self.A, formato="xlsx", fecha=self.FECHA).status_code, 403)
+        # otra persona no puede bajar una clase ajena pidiendo su horario_id
+        from _entorno import poner_clave
+        poner_clave("DOC-CIV")
+        otro = entrar("D-200", CLAVE_PRUEBA)
+        self.assertEqual(self.bajar(otro, formato="xlsx", fecha=self.FECHA, horario_id=self.horario).status_code, 404)
+
+
+class TestLoginGoogle(Base):
+    """«Continuar con Google»: solo @itsoeh.edu.mx y solo cuentas que ya existen (Google simulado)."""
+    CID = "cliente-prueba.apps.googleusercontent.com"
+
+    def setUp(self):
+        import os
+        import time
+        from unittest import mock
+        import backend.app as appmod
+        self.time = time
+        os.environ["NEOACCESS_GOOGLE_CLIENT_ID"] = self.CID
+        self.addCleanup(os.environ.pop, "NEOACCESS_GOOGLE_CLIENT_ID", None)
+        self.info = {}
+        p = mock.patch.object(appmod, "_verificar_token_google", lambda cred: dict(self.info))
+        p.start()
+        self.addCleanup(p.stop)
+        from _entorno import bd
+        c = bd()
+        c.execute("UPDATE usuarios SET correo = 'carlos.mendoza@itsoeh.edu.mx' WHERE id = 'AL-1'")
+        c.commit()
+        c.close()
+
+    def token(self, correo, **cambios):
+        self.info = {"aud": self.CID, "iss": "https://accounts.google.com", "exp": str(int(self.time.time()) + 600),
+                     "email": correo, "email_verified": "true", "hd": "itsoeh.edu.mx", **cambios}
+        return C.post("/api/auth/google", json={"credential": "x" * 40})
+
+    def test_config_y_entrada_con_cuenta_existente(self):
+        cfg = C.get("/api/auth/google-config").json()
+        self.assertEqual((cfg["habilitado"], cfg["client_id"]), (True, self.CID))
+        r = self.token("Carlos.Mendoza@itsoeh.edu.mx")
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["admin"]["matricula_clave"], "22030001")
+        H = {"Authorization": "Bearer " + r.json()["token"]}
+        self.assertEqual(C.get("/api/portal/student-data", headers=H).status_code, 200)
+
+    def test_rechazos(self):
+        self.assertEqual(self.token("alguien@gmail.com", hd=None).status_code, 403)
+        self.assertEqual(self.token("carlos.mendoza@itsoeh.edu.mx", hd="otra.edu.mx").status_code, 403)
+        self.assertEqual(self.token("carlos.mendoza@itsoeh.edu.mx", aud="otro-cliente").status_code, 401)
+        self.assertEqual(self.token("carlos.mendoza@itsoeh.edu.mx", email_verified="false").status_code, 401)
+        self.assertEqual(self.token("carlos.mendoza@itsoeh.edu.mx", exp="1").status_code, 401)
+        r = self.token("sin.cuenta@itsoeh.edu.mx")
+        self.assertEqual(r.status_code, 404)
+        self.assertIn("Crear cuenta", r.json()["detail"])
+
+    def test_deshabilitado_sin_client_id(self):
+        import os
+        os.environ.pop("NEOACCESS_GOOGLE_CLIENT_ID", None)
+        self.assertFalse(C.get("/api/auth/google-config").json()["habilitado"])
+        self.assertEqual(self.token("carlos.mendoza@itsoeh.edu.mx").status_code, 404)
+
+
 class TestMetricasPorPuerta(Base):
     def test_resumen_e_historial_por_puerta(self):
         tok_a = C.post("/api/devices", headers=self.A, json={"id": "PTA-A", "laboratorio_id": "LAB-RED", "nombre": "Puerta A"}).json()["token_api"]
