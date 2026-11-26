@@ -8,7 +8,7 @@
   "pin_led_verde_gpio": 27,
   "pin_led_rojo_gpio": 22,
   "pin_buzzer_gpio": 23,
-  "buzzer_activo_en_bajo": false,
+  "buzzer_activo_en_bajo": true,
   "modo_captura": "boton",
   "pin_boton_gpio": 24,
   "segundos_cuenta_regresiva": 5,

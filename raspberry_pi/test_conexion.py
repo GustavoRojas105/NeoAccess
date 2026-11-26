@@ -114,7 +114,7 @@ def run_diagnostics():
         GPIO.setup(pin_led_rojo, GPIO.OUT)
         # Buzzer callado durante la prueba (algunos módulos suenan con LOW)
         GPIO.setup(pin_buzzer, GPIO.OUT,
-                   initial=GPIO.HIGH if cfg.get("buzzer_activo_en_bajo", False) else GPIO.LOW)
+                   initial=GPIO.HIGH if cfg.get("buzzer_activo_en_bajo", True) else GPIO.LOW)
 
         print(f"Activando relevador en GPIO {pin_cerradura} durante 3 segundos...")
         print("(Deberías escuchar el 'clic' del relevador y ver encender el LED verde)")

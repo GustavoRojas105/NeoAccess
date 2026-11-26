@@ -177,7 +177,7 @@ class NeoAccessRaspberryNode:
         self.pin_led_rojo = self.config.get("pin_led_rojo_gpio", 22)
         self.pin_buzzer = self.config.get("pin_buzzer_gpio", 23)
         # Algunos módulos de buzzer suenan con LOW y se callan con HIGH ("activo en bajo")
-        self.buzzer_activo_bajo = bool(self.config.get("buzzer_activo_en_bajo", False))
+        self.buzzer_activo_bajo = bool(self.config.get("buzzer_activo_en_bajo", True))
         self.open_seconds = self.config.get("segundos_puerta_abierta", 5)
         # Similitud coseno mínima para aceptar una identidad (SFace: 0.363 recomendado)
         self.threshold = self.config.get("umbral_similitud_coseno", DEFAULT_COSINE_THRESHOLD)

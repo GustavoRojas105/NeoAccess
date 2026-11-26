@@ -1294,7 +1294,7 @@ def _device_config(device_id: str, request: Request) -> dict:
         "pin_led_verde_gpio": 27,
         "pin_led_rojo_gpio": 22,
         "pin_buzzer_gpio": 23,
-        "buzzer_activo_en_bajo": False,
+        "buzzer_activo_en_bajo": True,
         "modo_captura": "boton",
         "pin_boton_gpio": 24,
         "segundos_cuenta_regresiva": 5,
