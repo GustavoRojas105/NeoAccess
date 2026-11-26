@@ -171,6 +171,8 @@ class NeoAccessRaspberryNode:
         self.pin_led_verde = self.config.get("pin_led_verde_gpio", 27)
         self.pin_led_rojo = self.config.get("pin_led_rojo_gpio", 22)
         self.pin_buzzer = self.config.get("pin_buzzer_gpio", 23)
+        # Algunos módulos de buzzer suenan con LOW y se callan con HIGH ("activo en bajo")
+        self.buzzer_activo_bajo = bool(self.config.get("buzzer_activo_en_bajo", False))
         self.open_seconds = self.config.get("segundos_puerta_abierta", 5)
         # Similitud coseno mínima para aceptar una identidad (SFace: 0.363 recomendado)
         self.threshold = self.config.get("umbral_similitud_coseno", DEFAULT_COSINE_THRESHOLD)
@@ -235,6 +237,11 @@ class NeoAccessRaspberryNode:
         self.online = False
         print(f"[CONFIG] config.json actualizado: {self.device_id} -> {self.server_url}")
 
+    def _buzzer(self, sonar: bool):
+        """Enciende o apaga el buzzer respetando si el módulo es activo en bajo."""
+        if HARDWARE_GPIO_AVAILABLE:
+            GPIO.output(self.pin_buzzer, GPIO.LOW if sonar == self.buzzer_activo_bajo else GPIO.HIGH)
+
     def setup_gpio(self):
         """Configuración física de pines GPIO de la Raspberry Pi Zero W."""
         if HARDWARE_GPIO_AVAILABLE:
@@ -243,7 +250,8 @@ class NeoAccessRaspberryNode:
             GPIO.setup(self.pin_cerradura, GPIO.OUT, initial=GPIO.LOW)
             GPIO.setup(self.pin_led_verde, GPIO.OUT, initial=GPIO.LOW)
             GPIO.setup(self.pin_led_rojo, GPIO.OUT, initial=GPIO.LOW)
-            GPIO.setup(self.pin_buzzer, GPIO.OUT, initial=GPIO.LOW)
+            GPIO.setup(self.pin_buzzer, GPIO.OUT,
+                       initial=GPIO.HIGH if self.buzzer_activo_bajo else GPIO.LOW)
             print(f"[GPIO OK] Relevador de cerradura configurado en GPIO {self.pin_cerradura}.")
             if self.capture_mode == "boton":
                 # Botón entre el GPIO y GND: resistencia pull-up interna, se lee LOW al presionar
@@ -516,9 +524,9 @@ class NeoAccessRaspberryNode:
                 try:
                     GPIO.output(self.pin_cerradura, GPIO.HIGH)
                     GPIO.output(self.pin_led_verde, GPIO.HIGH)
-                    GPIO.output(self.pin_buzzer, GPIO.HIGH)
+                    self._buzzer(True)
                     time.sleep(0.3)
-                    GPIO.output(self.pin_buzzer, GPIO.LOW)
+                    self._buzzer(False)
                     time.sleep(self.open_seconds)
                 finally:
                     # Pase lo que pase, la cerradura vuelve a bloquearse
@@ -534,10 +542,10 @@ class NeoAccessRaspberryNode:
             print("\n[CERRADURA] -- ACCESO DENEGADO. La puerta permanece BLOQUEADA.\n")
             if HARDWARE_GPIO_AVAILABLE:
                 GPIO.output(self.pin_led_rojo, GPIO.HIGH)
-                GPIO.output(self.pin_buzzer, GPIO.HIGH)
+                self._buzzer(True)
                 time.sleep(0.8)
                 GPIO.output(self.pin_led_rojo, GPIO.LOW)
-                GPIO.output(self.pin_buzzer, GPIO.LOW)
+                self._buzzer(False)
 
     # -------------------------------------------------------------
     # PROCESAMIENTO DE ACCESO CON PRIVACIDAD (RF-07)
@@ -652,9 +660,9 @@ class NeoAccessRaspberryNode:
             return
         pin = self.pin_led_verde
         GPIO.output(pin, GPIO.HIGH)
-        GPIO.output(self.pin_buzzer, GPIO.HIGH)
+        self._buzzer(True)
         time.sleep(0.25 if ultimo else 0.08)
-        GPIO.output(self.pin_buzzer, GPIO.LOW)
+        self._buzzer(False)
         time.sleep(0.15)
         GPIO.output(pin, GPIO.LOW)
         time.sleep(0.75 if not ultimo else 0.6)
