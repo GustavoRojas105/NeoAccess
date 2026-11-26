@@ -96,12 +96,15 @@
         <span>Ingresar al Sistema</span>
         <i data-lucide="arrow-right" class="w-4 h-4"></i>
       </button>
+      <button type="button" id="btn-olvide" class="w-full text-[11px] text-slate-500 hover:text-slate-900 underline">
+        ¿Olvidaste tu contraseña?
+      </button>
     </form>
 
     <!-- Formulario de Registro (solo correo institucional) -->
     <form id="form-register" class="space-y-3 hidden">
       <p class="text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-2.5">
-        Solo con correo institucional <strong>@itsoeh.edu.mx</strong>. Te enviaremos un enlace para verificarlo.
+        Solo con correo institucional <strong>@itsoeh.edu.mx</strong>. Te enviaremos un código de 6 dígitos para verificarlo.
         Las cuentas de docente las aprueba el administrador.
       </p>
       <div>
@@ -159,11 +162,79 @@
       <p class="text-[10px] text-slate-400">Mínimo 8 caracteres.</p>
       <button id="btn-register" type="submit"
         class="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg transition flex items-center justify-center gap-2">
-        <span>Crear cuenta y enviar verificación</span>
+        <span>Crear cuenta y enviar código</span>
       </button>
-      <button id="btn-resend" type="button" class="w-full text-[11px] text-slate-500 hover:text-slate-900 underline">
-        ¿No te llegó el correo? Reenviar enlace
+      <button id="btn-ya-tengo-codigo" type="button" class="w-full text-[11px] text-slate-500 hover:text-slate-900 underline">
+        Ya me registré: escribir mi código
       </button>
+    </form>
+
+    <!-- Paso 2 del registro: código de 6 dígitos -->
+    <form id="form-codigo" class="space-y-3 hidden" autocomplete="off">
+      <div class="text-center">
+        <p class="text-sm font-semibold text-slate-900">Revisa tu correo</p>
+        <p class="text-[11px] text-slate-500 mt-1">Escribe el código de 6 dígitos que enviamos a</p>
+        <input type="email" id="codigo-correo" required maxlength="120" placeholder="tu.nombre@itsoeh.edu.mx"
+          class="mt-1 w-full text-center text-xs font-semibold text-slate-800 bg-transparent border-0 border-b border-dashed border-slate-300 focus:outline-none focus:border-slate-700 py-1">
+      </div>
+      <input type="text" id="codigo-valor" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+        autocomplete="one-time-code" placeholder="••••••"
+        class="w-full text-center text-2xl font-mono tracking-[0.5em] py-3 border border-slate-300 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-700">
+      <p class="text-[10px] text-slate-400 text-center">Vence en 15 minutos. Si no lo ves, revisa la carpeta de spam.</p>
+      <button id="btn-codigo" type="submit"
+        class="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg transition">
+        Verificar y activar mi cuenta
+      </button>
+      <div class="flex justify-between text-[11px]">
+        <button type="button" id="btn-resend" class="text-slate-500 hover:text-slate-900 underline">Reenviar código</button>
+        <button type="button" data-volver class="text-slate-500 hover:text-slate-900 underline">Volver</button>
+      </div>
+    </form>
+
+    <!-- Recuperar contraseña: 1) correo, 2) código + contraseña nueva -->
+    <form id="form-recuperar" class="space-y-3 hidden">
+      <div class="text-center">
+        <p class="text-sm font-semibold text-slate-900">Recuperar contraseña</p>
+        <p class="text-[11px] text-slate-500 mt-1">Te enviaremos un código a tu correo institucional.</p>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Correo institucional</label>
+        <input type="email" id="rec-correo" required maxlength="120" placeholder="tu.nombre@itsoeh.edu.mx" autocomplete="email"
+          class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-700">
+      </div>
+      <button id="btn-rec-enviar" type="submit"
+        class="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg transition">
+        Enviar código
+      </button>
+      <button type="button" data-volver class="w-full text-[11px] text-slate-500 hover:text-slate-900 underline">Volver a iniciar sesión</button>
+    </form>
+
+    <form id="form-nueva" class="space-y-3 hidden" autocomplete="off">
+      <div class="text-center">
+        <p class="text-sm font-semibold text-slate-900">Crea tu contraseña nueva</p>
+        <p class="text-[11px] text-slate-500 mt-1">Código enviado a <strong id="nueva-correo-txt"></strong></p>
+      </div>
+      <input type="text" id="nueva-codigo" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+        autocomplete="one-time-code" placeholder="••••••"
+        class="w-full text-center text-xl font-mono tracking-[0.4em] py-2.5 border border-slate-300 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-700">
+      <div>
+        <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Contraseña nueva</label>
+        <div class="relative"><input type="password" id="nueva-password" required minlength="8" maxlength="128" autocomplete="new-password" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-700 pr-10"><button type="button" data-ojo="nueva-password" class="absolute inset-y-0 right-0 px-3 text-slate-400 hover:text-slate-700" aria-label="Mostrar contraseña"><i data-lucide="eye" class="w-4 h-4"></i></button></div>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Confirmar contraseña</label>
+        <div class="relative"><input type="password" id="nueva-password2" required minlength="8" maxlength="128" autocomplete="new-password" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-700 pr-10"><button type="button" data-ojo="nueva-password2" class="absolute inset-y-0 right-0 px-3 text-slate-400 hover:text-slate-700" aria-label="Mostrar contraseña"><i data-lucide="eye" class="w-4 h-4"></i></button></div>
+        <p id="nueva-no-coincide" class="hidden mt-1 text-[11px] text-red-600">Las contraseñas no coinciden.</p>
+      </div>
+      <p class="text-[10px] text-slate-400">Mínimo 8 caracteres. Al cambiarla se cierran las sesiones abiertas.</p>
+      <button id="btn-nueva" type="submit"
+        class="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg transition">
+        Cambiar contraseña
+      </button>
+      <div class="flex justify-between text-[11px]">
+        <button type="button" id="btn-rec-reenviar" class="text-slate-500 hover:text-slate-900 underline">Reenviar código</button>
+        <button type="button" data-volver class="text-slate-500 hover:text-slate-900 underline">Cancelar</button>
+      </div>
     </form>
 
     <div class="mt-6 pt-3 border-t border-slate-100 text-center text-[11px] text-slate-400">
@@ -194,14 +265,40 @@
         infoBox.textContent = text;
       }
 
+      const VISTAS = ["form-login", "form-register", "form-codigo", "form-recuperar", "form-nueva"];
       function showTab(cual) {
-        const reg = cual === "register";
-        formRegister.classList.toggle("hidden", !reg);
-        formLogin.classList.toggle("hidden", reg);
+        // cual: login | register | codigo | recuperar | nueva
+        const id = cual === "register" ? "form-register" : "form-" + cual;
+        VISTAS.forEach(v => document.getElementById(v).classList.toggle("hidden", v !== id));
         document.getElementById("login-alert").classList.add("hidden");
+        const reg = ["register", "codigo"].includes(cual);
         tabRegister.className = "py-2 rounded-lg " + (reg ? "bg-white text-slate-900 shadow-sm" : "text-slate-500");
         tabLogin.className = "py-2 rounded-lg " + (!reg ? "bg-white text-slate-900 shadow-sm" : "text-slate-500");
       }
+      function ocultarInfo() { infoBox.className = "hidden mb-4 p-3 text-xs rounded-lg border font-medium"; }
+      const esInstitucional = c => c.endsWith(DOMINIO) && c.indexOf("@") === c.length - DOMINIO.length;
+      const detalle = (data, porDefecto) => Array.isArray(data.detail) ? "Revise los datos del formulario." : (data.detail || porDefecto);
+      async function postJSON(url, cuerpo) {
+        const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo) });
+        let data = {};
+        try { data = await res.json(); } catch (_) {}
+        return { ok: res.ok, data };
+      }
+
+      // Ojo para mostrar/ocultar contraseña
+      document.querySelectorAll("[data-ojo]").forEach(btn => btn.addEventListener("click", () => {
+        const campo = document.getElementById(btn.dataset.ojo);
+        const ver = campo.type === "password";
+        campo.type = ver ? "text" : "password";
+        btn.innerHTML = `<i data-lucide="${ver ? "eye-off" : "eye"}" class="w-4 h-4"></i>`;
+        btn.setAttribute("aria-label", ver ? "Ocultar contraseña" : "Mostrar contraseña");
+        if (window.lucide) lucide.createIcons();
+      }));
+      document.querySelectorAll("[data-volver]").forEach(b => b.addEventListener("click", () => { ocultarInfo(); showTab("login"); }));
+      // Solo números en los campos de código
+      ["codigo-valor", "nueva-codigo"].forEach(id => document.getElementById(id).addEventListener("input", e => {
+        e.target.value = e.target.value.replace(/\D/g, "").slice(0, 6);
+      }));
       tabLogin.addEventListener("click", () => showTab("login"));
       let enMantenimiento = false;
       tabRegister.addEventListener("click", () => {
@@ -270,8 +367,105 @@
             throw new Error(det || "No se pudo registrar.");
           }
           formRegister.reset();
-          showTab("login");
+          document.getElementById("codigo-correo").value = data.correo || correo;
+          document.getElementById("codigo-valor").value = "";
+          showTab("codigo");
           showInfo(data.message, data.correo_enviado ? "ok" : "warn");
+          document.getElementById("codigo-valor").focus();
+        } catch (err) {
+          showInfo(err.message, "error");
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      document.getElementById("btn-ya-tengo-codigo").addEventListener("click", () => {
+        document.getElementById("codigo-correo").value = document.getElementById("reg-correo").value.trim().toLowerCase();
+        ocultarInfo();
+        showTab("codigo");
+        document.getElementById(document.getElementById("codigo-correo").value ? "codigo-valor" : "codigo-correo").focus();
+      });
+
+      document.getElementById("form-codigo").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const correo = document.getElementById("codigo-correo").value.trim().toLowerCase();
+        const codigo = document.getElementById("codigo-valor").value.trim();
+        if (!esInstitucional(correo)) { showInfo("Escribe tu correo " + DOMINIO + ".", "error"); return; }
+        if (!/^\d{6}$/.test(codigo)) { showInfo("El código tiene 6 números.", "error"); return; }
+        const btn = document.getElementById("btn-codigo");
+        btn.disabled = true;
+        try {
+          const { ok, data } = await postJSON("/api/auth/verify-code", { correo, codigo });
+          if (!ok) throw new Error(detalle(data, "No se pudo verificar el código."));
+          showTab("login");
+          showInfo(data.message, data.estado === "ok" ? "ok" : "warn");
+          if (data.estado !== "pendiente") document.getElementById("login-username").focus();
+        } catch (err) {
+          showInfo(err.message, "error");
+          document.getElementById("codigo-valor").select();
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      // ── Recuperar contraseña ──
+      let correoRecuperacion = "";
+      document.getElementById("btn-olvide").addEventListener("click", () => {
+        if (enMantenimiento) {
+          showInfo("La recuperación de contraseña está pausada mientras el sistema está en mantenimiento.", "warn");
+          return;
+        }
+        ocultarInfo();
+        showTab("recuperar");
+        document.getElementById("rec-correo").focus();
+      });
+      async function pedirCodigoRecuperacion(correo, btn) {
+        btn.disabled = true;
+        try {
+          const { ok, data } = await postJSON("/api/auth/forgot-password", { correo });
+          if (!ok) throw new Error(detalle(data, "No se pudo enviar el código."));
+          correoRecuperacion = correo;
+          document.getElementById("nueva-correo-txt").textContent = correo;
+          showTab("nueva");
+          showInfo(data.message, "ok");
+          document.getElementById("nueva-codigo").focus();
+        } catch (err) {
+          showInfo(err.message, "error");
+        } finally {
+          btn.disabled = false;
+        }
+      }
+      document.getElementById("form-recuperar").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const correo = document.getElementById("rec-correo").value.trim().toLowerCase();
+        if (!esInstitucional(correo)) { showInfo("Solo correos institucionales " + DOMINIO + ".", "error"); return; }
+        pedirCodigoRecuperacion(correo, document.getElementById("btn-rec-enviar"));
+      });
+      document.getElementById("btn-rec-reenviar").addEventListener("click", (e) => pedirCodigoRecuperacion(correoRecuperacion, e.target));
+
+      const pwNueva = document.getElementById("nueva-password");
+      const pwNueva2 = document.getElementById("nueva-password2");
+      const avisoNoCoincide = document.getElementById("nueva-no-coincide");
+      const revisarCoincidencia = () => avisoNoCoincide.classList.toggle("hidden", !pwNueva2.value || pwNueva.value === pwNueva2.value);
+      pwNueva.addEventListener("input", revisarCoincidencia);
+      pwNueva2.addEventListener("input", revisarCoincidencia);
+
+      document.getElementById("form-nueva").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const codigo = document.getElementById("nueva-codigo").value.trim();
+        if (!/^\d{6}$/.test(codigo)) { showInfo("El código tiene 6 números.", "error"); return; }
+        if (pwNueva.value !== pwNueva2.value) { revisarCoincidencia(); showInfo("Las contraseñas no coinciden.", "error"); return; }
+        const btn = document.getElementById("btn-nueva");
+        btn.disabled = true;
+        try {
+          const { ok, data } = await postJSON("/api/auth/reset-password",
+            { correo: correoRecuperacion, codigo, password: pwNueva.value });
+          if (!ok) throw new Error(detalle(data, "No se pudo cambiar la contraseña."));
+          document.getElementById("form-nueva").reset();
+          avisoNoCoincide.classList.add("hidden");
+          showTab("login");
+          showInfo(data.message, "ok");
+          document.getElementById("login-username").focus();
         } catch (err) {
           showInfo(err.message, "error");
         } finally {
@@ -280,9 +474,9 @@
       });
 
       document.getElementById("btn-resend").addEventListener("click", async () => {
-        const correo = document.getElementById("reg-correo").value.trim().toLowerCase();
-        if (!correo.endsWith(DOMINIO)) {
-          showInfo("Escribe tu correo " + DOMINIO + " en el campo de correo y vuelve a pulsar reenviar.", "warn");
+        const correo = document.getElementById("codigo-correo").value.trim().toLowerCase();
+        if (!esInstitucional(correo)) {
+          showInfo("Escribe arriba tu correo " + DOMINIO + " y vuelve a pulsar «Reenviar código».", "warn");
           return;
         }
         try {

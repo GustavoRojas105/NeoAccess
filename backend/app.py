@@ -25,7 +25,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from database.database import get_connection, init_db, periodo_siguiente
-from backend.mailer import send_email
+from backend.mailer import send_email, smtp_configured
 from backend.horarios_import import validar_horario, leer_archivo, generar_plantilla, cargar_materias
 from backend.auth import (
     hash_password, verify_password, needs_rehash, create_session,
@@ -33,7 +33,7 @@ from backend.auth import (
     login_locked_seconds, register_failed_login, reset_failed_logins
 )
 from backend.models import (
-    LoginRequest, RegisterRequest, AdminCreate, PasswordChange, JefeCreate, JefeCarreras, GroupUpdate, ResendVerificationRequest, MaintenancePayload, LabCreate, LabUpdate, DeviceCreate, GroupCreate,
+    LoginRequest, RegisterRequest, AdminCreate, PasswordChange, JefeCreate, JefeCarreras, GroupUpdate, ResendVerificationRequest, VerifyCodeRequest, PasswordResetRequest, MaintenancePayload, LabCreate, LabUpdate, DeviceCreate, GroupCreate,
     UserCreate, FacialMetadataCreate, FacialCapturePayload, ScheduleCreate,
     HeartbeatPayload, AccessAttemptPayload, CleaningPayload, CommandAckPayload
 )
@@ -344,12 +344,12 @@ def set_maintenance(payload: MaintenancePayload, admin: dict = Depends(get_curre
 
 # -------------------------------------------------------------
 # AUTORREGISTRO CON CORREO INSTITUCIONAL (@itsoeh.edu.mx)
-# La cuenta solo se crea cuando el usuario abre el enlace enviado a su correo.
+# La cuenta solo se crea cuando el usuario escribe el código de 6 dígitos que
+# se le envió al correo. El mismo mecanismo sirve para recuperar la contraseña.
 # -------------------------------------------------------------
 import re
 import hashlib
 import html as _html
-import ipaddress
 import secrets
 import socket
 import time
@@ -358,18 +358,71 @@ from fastapi.responses import RedirectResponse
 DOMINIO_INSTITUCIONAL = "itsoeh.edu.mx"
 _CORREO_RE = re.compile(r"^[a-z0-9._%+-]+@itsoeh\.edu\.mx$")
 _MATRICULA_RE = re.compile(r"^[A-Za-z0-9-]{3,40}$")
-VERIFICACION_HORAS = 24
+VERIFICACION_HORAS = 24          # enlaces antiguos (/verificar)
+CODIGO_MINUTOS = 15              # vigencia del código de 6 dígitos
+CODIGO_INTENTOS = 5              # intentos fallidos antes de invalidar el código
 _REGISTRO_INTENTOS = {}  # ip -> [timestamps]
 _REGISTRO_MAX_POR_HORA = 5
+_RECUPERAR_INTENTOS = {}  # ip -> [timestamps]
+_CODIGO_RE = re.compile(r"^\d{6}$")
+
+
+def _limite_por_hora(tabla: dict, ip: str, maximo: int, mensaje: str):
+    ahora = time.time()
+    intentos = [t for t in tabla.get(ip, []) if ahora - t < 3600]
+    if len(intentos) >= maximo:
+        raise HTTPException(status_code=429, detail=mensaje)
+    intentos.append(ahora)
+    tabla[ip] = intentos
 
 
 def _registro_rate_limit(ip: str):
-    ahora = time.time()
-    intentos = [t for t in _REGISTRO_INTENTOS.get(ip, []) if ahora - t < 3600]
-    if len(intentos) >= _REGISTRO_MAX_POR_HORA:
-        raise HTTPException(status_code=429, detail="Demasiadas solicitudes de registro. Intente de nuevo en una hora.")
-    intentos.append(ahora)
-    _REGISTRO_INTENTOS[ip] = intentos
+    _limite_por_hora(_REGISTRO_INTENTOS, ip, _REGISTRO_MAX_POR_HORA,
+                     "Demasiadas solicitudes de registro. Intente de nuevo en una hora.")
+
+
+def _nuevo_codigo() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def _hash_codigo(correo: str, codigo: str) -> str:
+    # Se mezcla con el correo: dos personas pueden recibir el mismo número
+    return _hash_token(f"{correo}:{codigo}")
+
+
+def _codigo_correcto(correo: str, codigo: str, guardado: str) -> bool:
+    codigo = (codigo or "").strip()
+    return bool(_CODIGO_RE.match(codigo)) and secrets.compare_digest(_hash_codigo(correo, codigo), guardado or "")
+
+
+def _expira_codigo() -> str:
+    return (datetime.now() + timedelta(minutes=CODIGO_MINUTOS)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _enviar_codigo(correo: str, nombre: str, codigo: str, motivo: str) -> bool:
+    """motivo: 'registro' (activar cuenta) o 'recuperar' (cambiar contraseña)."""
+    if motivo == "registro":
+        asunto = f"{codigo} es tu código para activar tu cuenta de NeoAccess"
+        para_que = "activar tu cuenta de NeoAccess ITSOEH"
+        aviso = "Si tú no solicitaste esta cuenta, ignora este correo."
+    else:
+        asunto = f"{codigo} es tu código para cambiar tu contraseña de NeoAccess"
+        para_que = "cambiar tu contraseña de NeoAccess ITSOEH"
+        aviso = "Si tú no lo pediste, ignora este correo: tu contraseña no cambia."
+    texto = (
+        f"Hola {nombre}:\n\n"
+        f"Tu código para {para_que} es:\n\n    {codigo}\n\n"
+        f"Vence en {CODIGO_MINUTOS} minutos. No lo compartas con nadie.\n\n{aviso}"
+    )
+    html = (
+        f"<p>Hola {_html.escape(nombre)}:</p>"
+        f"<p>Tu código para {para_que} es:</p>"
+        f"<p style='font-size:32px;font-weight:bold;letter-spacing:8px;font-family:monospace;"
+        f"background:#f1f5f9;border-radius:10px;padding:12px 18px;display:inline-block;color:#0f172a'>{codigo}</p>"
+        f"<p>Vence en <b>{CODIGO_MINUTOS} minutos</b>. No lo compartas con nadie.</p>"
+        f"<p style='font-size:12px;color:#64748b'>{aviso}</p>"
+    )
+    return send_email(correo, asunto, texto, html)
 
 
 def _normalizar_correo(correo: str) -> str:
@@ -387,56 +440,11 @@ def _ahora_str() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _public_base_url(request: Request) -> str:
-    """
-    URL base de los enlaces del correo. Usa NEOACCESS_PUBLIC_URL si existe; si no,
-    solo confía en el Host cuando es una IP de la red (un Host falso no puede hacer
-    que el enlace con el token apunte a otro sitio).
-    """
-    env_url = os.environ.get("NEOACCESS_PUBLIC_URL")
-    if env_url:
-        return env_url.rstrip("/")
-    port = request.url.port or 8000
-    host = request.url.hostname or ""
-    try:
-        if not ipaddress.ip_address(host).is_loopback:
-            return f"{request.url.scheme}://{host}:{port}"
-    except ValueError:
-        pass
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("10.255.255.255", 1))  # no envía paquetes; solo elige la interfaz
-        ip = s.getsockname()[0]
-        s.close()
-        return f"http://{ip}:{port}"
-    except Exception:
-        return f"http://127.0.0.1:{port}"
-
-
-def _enviar_verificacion(request: Request, correo: str, nombre: str, token: str) -> bool:
-    enlace = f"{_public_base_url(request)}/verificar?token={token}"
-    texto = (
-        f"Hola {nombre}:\n\n"
-        f"Para activar tu cuenta de NeoAccess ITSOEH abre este enlace (válido {VERIFICACION_HORAS} h):\n\n"
-        f"{enlace}\n\n"
-        "Si tú no solicitaste esta cuenta, ignora este correo."
-    )
-    html = (
-        f"<p>Hola {_html.escape(nombre)}:</p>"
-        f"<p>Para activar tu cuenta de <b>NeoAccess ITSOEH</b> haz clic aquí (válido {VERIFICACION_HORAS} h):</p>"
-        f'<p><a href="{enlace}" style="background:#0f172a;color:#fff;padding:10px 18px;'
-        f'border-radius:8px;text-decoration:none">Verificar mi correo</a></p>'
-        f"<p style='font-size:12px;color:#64748b'>O copia este enlace: {enlace}</p>"
-        "<p style='font-size:12px;color:#64748b'>Si tú no solicitaste esta cuenta, ignora este correo.</p>"
-    )
-    return send_email(correo, "Verifica tu cuenta de NeoAccess ITSOEH", texto, html)
-
-
 @app.post("/api/auth/register")
 def register_account(payload: RegisterRequest, request: Request):
     """
     Autorregistro de alumnos y docentes. Solo correos @itsoeh.edu.mx.
-    Envía un enlace de verificación; la cuenta no existe hasta que se abre.
+    Envía un código de 6 dígitos; la cuenta no existe hasta que se escribe (/api/auth/verify-code).
     Las cuentas de docente requieren además aprobación del administrador.
     """
     state = get_maintenance_state()
@@ -463,19 +471,18 @@ def register_account(payload: RegisterRequest, request: Request):
         # Una sola solicitud vigente por correo y por matrícula
         cursor.execute("DELETE FROM registros_pendientes WHERE correo = ? OR matricula_clave = ? OR expira < ?",
                        (correo, matricula, _ahora_str()))
-        token = secrets.token_urlsafe(32)
-        expira = (datetime.now() + timedelta(hours=VERIFICACION_HORAS)).strftime("%Y-%m-%d %H:%M:%S")
+        codigo = _nuevo_codigo()
         cursor.execute("""
-        INSERT INTO registros_pendientes (token_hash, correo, matricula_clave, nombre_completo, tipo, carrera, password_hash, expira)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?);
-        """, (_hash_token(token), correo, matricula, nombre, payload.tipo,
-              (payload.carrera or "").strip() or None, hash_password(payload.password), expira))
+        INSERT INTO registros_pendientes (token_hash, correo, matricula_clave, nombre_completo, tipo, carrera, password_hash, expira, intentos)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0);
+        """, (_hash_codigo(correo, codigo), correo, matricula, nombre, payload.tipo,
+              (payload.carrera or "").strip() or None, hash_password(payload.password), _expira_codigo()))
         conn.commit()
 
         try:
-            enviado = _enviar_verificacion(request, correo, nombre, token)
+            enviado = _enviar_codigo(correo, nombre, codigo, "registro")
         except Exception as e:
-            cursor.execute("DELETE FROM registros_pendientes WHERE token_hash = ?", (_hash_token(token),))
+            cursor.execute("DELETE FROM registros_pendientes WHERE correo = ?", (correo,))
             conn.commit()
             print(f"[CORREO] Error SMTP: {e}", flush=True)
             raise HTTPException(status_code=502, detail="No se pudo enviar el correo de verificación. Intente más tarde.")
@@ -485,15 +492,17 @@ def register_account(payload: RegisterRequest, request: Request):
     return {
         "success": True,
         "correo_enviado": enviado,
-        "message": (f"Te enviamos un enlace de verificación a {correo}. Ábrelo para activar tu cuenta."
+        "correo": correo,
+        "minutos": CODIGO_MINUTOS,
+        "message": (f"Te enviamos un código de 6 dígitos a {correo}. Escríbelo aquí para activar tu cuenta."
                     if enviado else
-                    "SMTP no configurado (modo pruebas): el enlace de verificación se mostró en la consola del servidor.")
+                    "SMTP no configurado (modo pruebas): el código se mostró en la consola del servidor.")
     }
 
 
 @app.post("/api/auth/resend-verification")
 def resend_verification(payload: ResendVerificationRequest, request: Request):
-    """Reenvía el enlace (genera uno nuevo). Respuesta genérica para no revelar qué correos existen."""
+    """Reenvía el código (genera uno nuevo). Respuesta genérica para no revelar qué correos existen."""
     state = get_maintenance_state()
     if state["activo"]:
         raise maintenance_exception(state)
@@ -504,17 +513,178 @@ def resend_verification(payload: ResendVerificationRequest, request: Request):
     cursor.execute("SELECT * FROM registros_pendientes WHERE correo = ? AND expira >= ?", (correo, _ahora_str()))
     pend = cursor.fetchone()
     if pend:
-        token = secrets.token_urlsafe(32)
-        expira = (datetime.now() + timedelta(hours=VERIFICACION_HORAS)).strftime("%Y-%m-%d %H:%M:%S")
-        cursor.execute("UPDATE registros_pendientes SET token_hash = ?, expira = ? WHERE id = ?",
-                       (_hash_token(token), expira, pend["id"]))
+        codigo = _nuevo_codigo()
+        cursor.execute("UPDATE registros_pendientes SET token_hash = ?, expira = ?, intentos = 0 WHERE id = ?",
+                       (_hash_codigo(correo, codigo), _expira_codigo(), pend["id"]))
         conn.commit()
         try:
-            _enviar_verificacion(request, correo, pend["nombre_completo"], token)
+            _enviar_codigo(correo, pend["nombre_completo"], codigo, "registro")
         except Exception as e:
             print(f"[CORREO] Error SMTP: {e}", flush=True)
     conn.close()
-    return {"success": True, "message": "Si hay un registro pendiente con ese correo, se envió un nuevo enlace."}
+    return {"success": True, "message": "Si hay un registro pendiente con ese correo, te enviamos un código nuevo."}
+
+
+def _activar_registro(cursor, pend) -> str:
+    """Crea (o vincula) la cuenta de un registro verificado. Devuelve 'ok', 'pendiente' o 'existe'."""
+    cursor.execute("SELECT id FROM usuarios WHERE correo = ?", (pend["correo"],))
+    correo_usado = cursor.fetchone()
+    cursor.execute("SELECT * FROM usuarios WHERE matricula_clave = ?", (pend["matricula_clave"],))
+    existente = cursor.fetchone()
+    if correo_usado or (existente and (existente["password_hash"] or existente["correo"])):
+        cursor.execute("DELETE FROM registros_pendientes WHERE id = ?", (pend["id"],))
+        return "existe"
+
+    if existente:
+        # Alumno/docente dado de alta antes por el administrador: se vincula su cuenta.
+        # Conserva su tipo; si no es alumno, requiere aprobación del administrador.
+        aprobada = 1 if existente["tipo"] == "alumno" else 0
+        cursor.execute("UPDATE usuarios SET password_hash = ?, correo = ?, cuenta_aprobada = ? WHERE id = ?;",
+                       (pend["password_hash"], pend["correo"], aprobada, existente["id"]))
+    else:
+        aprobada = 1 if pend["tipo"] == "alumno" else 0
+        nuevo_id = f"{'ALU' if pend['tipo'] == 'alumno' else 'DOC'}-{pend['matricula_clave']}"
+        cursor.execute("SELECT 1 FROM usuarios WHERE id = ?", (nuevo_id,))
+        if cursor.fetchone():
+            nuevo_id = f"{nuevo_id}-{secrets.token_hex(2).upper()}"
+        cursor.execute("""
+        INSERT INTO usuarios (id, nombre_completo, tipo, matricula_clave, password_hash, carrera, estado, correo, cuenta_aprobada)
+        VALUES (?, ?, ?, ?, ?, ?, 'activo', ?, ?);
+        """, (nuevo_id, pend["nombre_completo"], pend["tipo"], pend["matricula_clave"],
+              pend["password_hash"], pend["carrera"], pend["correo"], aprobada))
+    cursor.execute("DELETE FROM registros_pendientes WHERE id = ?", (pend["id"],))
+    return "ok" if aprobada else "pendiente"
+
+
+@app.post("/api/auth/verify-code")
+def verify_code(payload: VerifyCodeRequest):
+    """Activa la cuenta con el código de 6 dígitos enviado al correo."""
+    state = get_maintenance_state()
+    if state["activo"]:
+        raise maintenance_exception(state)
+    correo = _normalizar_correo(payload.correo)
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        pend = cursor.execute("SELECT * FROM registros_pendientes WHERE correo = ?", (correo,)).fetchone()
+        if not pend:
+            raise HTTPException(status_code=400, detail="No hay un registro pendiente con ese correo. Crea tu cuenta de nuevo.")
+        if pend["expira"] < _ahora_str():
+            raise HTTPException(status_code=400, detail="El código ya venció. Pide uno nuevo con «Reenviar código».")
+        intentos = pend["intentos"] or 0
+        if intentos >= CODIGO_INTENTOS:
+            raise HTTPException(status_code=400, detail="Demasiados intentos con este código. Pide uno nuevo con «Reenviar código».")
+        if not _codigo_correcto(correo, payload.codigo, pend["token_hash"]):
+            intentos += 1
+            cursor.execute("UPDATE registros_pendientes SET intentos = ? WHERE id = ?", (intentos, pend["id"]))
+            conn.commit()
+            quedan = CODIGO_INTENTOS - intentos
+            if quedan <= 0:
+                raise HTTPException(status_code=400, detail="Código incorrecto. Se acabaron los intentos: pide un código nuevo.")
+            raise HTTPException(status_code=400, detail=f"Código incorrecto. Te quedan {quedan} intento(s).")
+        resultado = _activar_registro(cursor, pend)
+        conn.commit()
+    finally:
+        conn.close()
+    mensajes = {
+        "ok": "✓ Correo verificado. Tu cuenta está lista: ya puedes iniciar sesión.",
+        "pendiente": "✓ Correo verificado. Tu cuenta de docente quedó pendiente de aprobación del administrador.",
+        "existe": "Esa matrícula o correo ya tiene una cuenta. Inicia sesión.",
+    }
+    return {"success": resultado != "existe", "estado": resultado, "message": mensajes[resultado]}
+
+
+def _buscar_cuenta_por_correo(cursor, correo: str):
+    """(tipo, id, nombre, rol) de la cuenta con ese correo, o None. Solo cuentas con contraseña."""
+    u = cursor.execute("""SELECT id, nombre_completo, tipo FROM usuarios
+                          WHERE lower(correo) = ? AND password_hash IS NOT NULL AND estado = 'activo'""",
+                       (correo,)).fetchone()
+    if u:
+        return ("usuario", u["id"], u["nombre_completo"], u["tipo"])
+    j = cursor.execute("SELECT id, nombre FROM jefes_carrera WHERE lower(email) = ? AND activo = 1",
+                       (correo,)).fetchone()
+    if j:
+        return ("jefe", str(j["id"]), j["nombre"], "jefe_carrera")
+    return None
+
+
+@app.post("/api/auth/forgot-password")
+def forgot_password(payload: ResendVerificationRequest, request: Request):
+    """
+    Envía un código para cambiar la contraseña. La respuesta es la misma exista o no
+    la cuenta, para no revelar qué correos están registrados.
+    """
+    state = get_maintenance_state()
+    if state["activo"]:
+        raise maintenance_exception(state)
+    _limite_por_hora(_RECUPERAR_INTENTOS, request.client.host if request.client else "desconocido", 5,
+                     "Demasiadas solicitudes. Intente de nuevo en una hora.")
+    correo = _normalizar_correo(payload.correo)
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cuenta = _buscar_cuenta_por_correo(cursor, correo)
+        if cuenta:
+            codigo = _nuevo_codigo()
+            cursor.execute("DELETE FROM recuperaciones_password WHERE correo = ? OR expira < ?", (correo, _ahora_str()))
+            cursor.execute("""INSERT INTO recuperaciones_password (correo, cuenta_tipo, cuenta_id, codigo_hash, expira)
+                              VALUES (?, ?, ?, ?, ?)""",
+                           (correo, cuenta[0], cuenta[1], _hash_codigo(correo, codigo), _expira_codigo()))
+            conn.commit()
+            try:
+                _enviar_codigo(correo, cuenta[2], codigo, "recuperar")
+            except Exception as e:
+                print(f"[CORREO] Error SMTP: {e}", flush=True)
+    finally:
+        conn.close()
+    mensaje = (f"Si {correo} tiene una cuenta, te enviamos un código de 6 dígitos (vence en {CODIGO_MINUTOS} min). "
+               "Revisa también la carpeta de spam.")
+    if not smtp_configured():
+        mensaje += " (Modo pruebas: el código aparece en la consola del servidor.)"
+    return {"success": True, "minutos": CODIGO_MINUTOS, "message": mensaje}
+
+
+@app.post("/api/auth/reset-password")
+def reset_password(payload: PasswordResetRequest):
+    """Cambia la contraseña con el código enviado al correo y cierra las sesiones abiertas."""
+    correo = _normalizar_correo(payload.correo)
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        rec = cursor.execute("SELECT * FROM recuperaciones_password WHERE correo = ? ORDER BY id DESC LIMIT 1",
+                             (correo,)).fetchone()
+        if not rec or rec["expira"] < _ahora_str():
+            raise HTTPException(status_code=400, detail="El código no es válido o ya venció. Pide uno nuevo.")
+        intentos = rec["intentos"] or 0
+        if not _codigo_correcto(correo, payload.codigo, rec["codigo_hash"]):
+            intentos += 1
+            if intentos >= CODIGO_INTENTOS:
+                cursor.execute("DELETE FROM recuperaciones_password WHERE id = ?", (rec["id"],))
+                conn.commit()
+                raise HTTPException(status_code=400, detail="Código incorrecto. Se acabaron los intentos: pide un código nuevo.")
+            cursor.execute("UPDATE recuperaciones_password SET intentos = ? WHERE id = ?", (intentos, rec["id"]))
+            conn.commit()
+            raise HTTPException(status_code=400, detail=f"Código incorrecto. Te quedan {CODIGO_INTENTOS - intentos} intento(s).")
+
+        nuevo = hash_password(payload.password)
+        if rec["cuenta_tipo"] == "jefe":
+            cursor.execute("UPDATE jefes_carrera SET password_hash = ? WHERE id = ?", (nuevo, rec["cuenta_id"]))
+            rol, uid = "jefe_carrera", rec["cuenta_id"]
+            try:
+                uid = int(uid)
+            except ValueError:
+                pass
+        else:
+            cursor.execute("UPDATE usuarios SET password_hash = ? WHERE id = ?", (nuevo, rec["cuenta_id"]))
+            fila = cursor.execute("SELECT tipo FROM usuarios WHERE id = ?", (rec["cuenta_id"],)).fetchone()
+            rol, uid = (fila["tipo"] if fila else None), rec["cuenta_id"]
+        cursor.execute("DELETE FROM recuperaciones_password WHERE correo = ?", (correo,))
+        conn.commit()
+    finally:
+        conn.close()
+    if rol:
+        destroy_sessions_for(rol, uid)  # quien tuviera la contraseña vieja pierde la sesión
+    return {"success": True, "message": "✓ Contraseña actualizada. Ya puedes iniciar sesión con la nueva."}
 
 
 @app.get("/verificar")
@@ -534,35 +704,9 @@ def verify_email(token: str = ""):
             conn.commit()
             return RedirectResponse("/login?verificado=expirado", status_code=303)
 
-        cursor.execute("SELECT id FROM usuarios WHERE correo = ?", (pend["correo"],))
-        correo_usado = cursor.fetchone()
-        cursor.execute("SELECT * FROM usuarios WHERE matricula_clave = ?", (pend["matricula_clave"],))
-        existente = cursor.fetchone()
-        if correo_usado or (existente and (existente["password_hash"] or existente["correo"])):
-            cursor.execute("DELETE FROM registros_pendientes WHERE id = ?", (pend["id"],))
-            conn.commit()
-            return RedirectResponse("/login?verificado=existe", status_code=303)
-
-        if existente:
-            # Alumno/docente dado de alta antes por el administrador: se vincula su cuenta.
-            # Conserva su tipo; si no es alumno, requiere aprobación del administrador.
-            aprobada = 1 if existente["tipo"] == "alumno" else 0
-            cursor.execute("UPDATE usuarios SET password_hash = ?, correo = ?, cuenta_aprobada = ? WHERE id = ?;",
-                           (pend["password_hash"], pend["correo"], aprobada, existente["id"]))
-        else:
-            aprobada = 1 if pend["tipo"] == "alumno" else 0
-            nuevo_id = f"{'ALU' if pend['tipo'] == 'alumno' else 'DOC'}-{pend['matricula_clave']}"
-            cursor.execute("SELECT 1 FROM usuarios WHERE id = ?", (nuevo_id,))
-            if cursor.fetchone():
-                nuevo_id = f"{nuevo_id}-{secrets.token_hex(2).upper()}"
-            cursor.execute("""
-            INSERT INTO usuarios (id, nombre_completo, tipo, matricula_clave, password_hash, carrera, estado, correo, cuenta_aprobada)
-            VALUES (?, ?, ?, ?, ?, ?, 'activo', ?, ?);
-            """, (nuevo_id, pend["nombre_completo"], pend["tipo"], pend["matricula_clave"],
-                  pend["password_hash"], pend["carrera"], pend["correo"], aprobada))
-        cursor.execute("DELETE FROM registros_pendientes WHERE id = ?", (pend["id"],))
+        resultado = _activar_registro(cursor, pend)
         conn.commit()
-        return RedirectResponse("/login?verificado=" + ("ok" if aprobada else "pendiente"), status_code=303)
+        return RedirectResponse("/login?verificado=" + resultado, status_code=303)
     finally:
         conn.close()
 

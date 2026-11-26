@@ -17,10 +17,10 @@ Cada tipo corre en un proceso aparte con una **base de datos temporal nueva**. L
 | Tipo | Archivo | Pruebas | Resultado |
 |---|---|---|---|
 | Caja blanca | `test_caja_blanca.py` | 43 | ✅ 43 pasan |
-| Caja negra (API) | `test_caja_negra.py` | 39 | ✅ 39 pasan |
+| Caja negra (API) | `test_caja_negra.py` | 45 | ✅ 45 pasan |
 | Caja gris | `test_caja_gris.py` | 19 | ✅ 19 pasan |
 | Caja negra (interfaz) | navegador, manual asistida | 9 escenarios | ✅ todos correctos |
-| **Total automatizadas** | | **101** | **✅ 101 pasan** |
+| **Total automatizadas** | | **107** | **✅ 107 pasan** |
 
 Muchas pruebas usan `subTest` con tablas de casos. En total se revisan **más de 200 combinaciones** de entrada.
 
@@ -79,6 +79,7 @@ Se recorren las ramas de cada función interna:
   - archivo de 2 MB + 1 byte y 1001 filas;
   - fechas de reporte en el mismo día.
 - **Matriz de permisos**: 15 rutas × 4 roles, más 6 acciones prohibidas al jefe.
+- **Códigos por correo** (correo simulado): solo `@itsoeh.edu.mx`; registro con código de 6 dígitos (ya no enlace); 5 intentos y el código queda inválido; reenviar da uno nuevo; código vencido; docente queda pendiente; recuperar contraseña con respuesta igual exista o no la cuenta, mínimo 8 caracteres, código de un solo uso y cierre de sesiones abiertas.
 - Importación: al revisar no se guarda nada, y al reimportar no se duplica.
 - Reportes con caracteres especiales (`%`, `_`, `' OR 1=1 --`): sin inyección SQL.
 

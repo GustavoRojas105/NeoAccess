@@ -110,11 +110,14 @@ python backend\app.py
 Alumnos y docentes crean su cuenta en la pestaña **Crear cuenta** del login:
 
 - Solo se aceptan correos **`@itsoeh.edu.mx`**.
-- Se envía un enlace de verificación (válido 24 h). La cuenta no existe hasta que se abre el enlace.
+- Se envía un **código de 6 dígitos** al correo (vence en 15 min, máximo 5 intentos). La cuenta no existe hasta que se escribe el código.
+- Si no llega o se vence: **Reenviar código**. Si ya te registraste antes: **Ya me registré: escribir mi código**.
 - **Alumnos:** pueden entrar en cuanto verifican el correo.
 - **Docentes:** después de verificar, el administrador aprueba la cuenta en **Maestros y Personal → Aprobar**.
 - Si el administrador ya había dado de alta la matrícula (sin contraseña), el registro se vincula a ese mismo alumno en lugar de duplicarlo.
 - Se aceptan como máximo 5 solicitudes por hora desde la misma IP.
+
+**¿Olvidaste tu contraseña?** (en el login): llega un código de 6 dígitos al correo institucional de la cuenta (alumnos, docentes y jefes de carrera) y con él se pone una contraseña nueva. Al cambiarla se cierran las sesiones abiertas. La respuesta es la misma exista o no la cuenta, para no revelar qué correos están registrados.
 
 **Configurar el envío de correos:**
 
@@ -122,7 +125,7 @@ Alumnos y docentes crean su cuenta en la pestaña **Crear cuenta** del login:
 2. Rellena la cuenta que enviará los correos y su **contraseña de aplicación**:
    - **Google Workspace:** `smtp.gmail.com`. La cuenta necesita verificación en 2 pasos; la contraseña se crea en *Cuenta de Google → Seguridad → Contraseñas de aplicaciones*.
    - **Microsoft 365:** `smtp.office365.com`. El administrador de TI debe tener habilitado *SMTP AUTH* para esa cuenta.
-3. En `NEOACCESS_PUBLIC_URL` pon la IP fija de la PC servidor. Es la dirección que aparecerá en el enlace del correo.
+3. `NEOACCESS_PUBLIC_URL` es opcional (los correos llevan un código, no un enlace). Si lo pones, también define la IP que reciben las Raspberry en su config.
 4. Prueba el envío:
    ```powershell
    python backend\mailer.py tu.correo@itsoeh.edu.mx

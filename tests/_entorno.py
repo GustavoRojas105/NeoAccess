@@ -45,6 +45,10 @@ def _huella(ruta):
 
 HUELLA_BD_REAL = _huella(BD_REAL) if os.path.exists(BD_REAL) else None
 
+# Sin SMTP en pruebas: config_servidor.env no sobreescribe variables ya definidas
+for _k in ("NEOACCESS_SMTP_HOST", "NEOACCESS_SMTP_USER", "NEOACCESS_SMTP_PASSWORD"):
+    os.environ[_k] = ""
+
 _CARPETA = tempfile.mkdtemp(prefix="neoaccess_pruebas_")
 dbm.DB_PATH = os.path.join(_CARPETA, "pruebas.db")
 dbm.init_db()

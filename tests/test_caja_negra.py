@@ -261,6 +261,132 @@ class TestCuentasPortal(Base):
         self.assertEqual(C.put("/api/users/DOC-ISC", headers=self.DO, json=d).status_code, 403)
 
 
+class TestCodigosPorCorreo(Base):
+    """Registro con código de 6 dígitos y recuperación de contraseña (correo simulado)."""
+
+    def setUp(self):
+        import re
+        from unittest import mock
+        import backend.app as appmod
+        appmod._REGISTRO_INTENTOS.clear()
+        appmod._RECUPERAR_INTENTOS.clear()
+        self.enviados = []
+        self.re = re
+
+        def falso(para, asunto, texto, html=None):
+            self.enviados.append((para, asunto, texto))
+            return True
+        p = mock.patch.object(appmod, "send_email", falso)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def ultimo_codigo(self, correo):
+        para, asunto, texto = [e for e in self.enviados if e[0] == correo][-1]
+        return self.re.search(r"\b(\d{6})\b", texto).group(1)
+
+    def registrar(self, correo, matricula, tipo="alumno"):
+        r = C.post("/api/auth/register", json={"tipo": tipo, "nombre_completo": "Persona de Prueba",
+                                               "matricula_clave": matricula, "correo": correo,
+                                               "carrera": ISC, "password": "ClaveNueva123"})
+        self.assertEqual(r.status_code, 200, r.text)
+        return r.json()
+
+    def test_solo_correo_institucional(self):
+        for correo in ("alguien@gmail.com", "x@itsoeh.edu.mx.evil.com", "x@sub.itsoeh.edu.mx"):
+            r = C.post("/api/auth/register", json={"tipo": "alumno", "nombre_completo": "Fulano",
+                                                   "matricula_clave": "99000001", "correo": correo,
+                                                   "password": "ClaveNueva123"})
+            self.assertEqual(r.status_code, 400, correo)
+        self.assertEqual(self.enviados, [])
+
+    def test_registro_con_codigo(self):
+        correo = "alumno.codigo@itsoeh.edu.mx"
+        d = self.registrar(correo, "99000010")
+        self.assertTrue(d["correo_enviado"])
+        self.assertEqual(d["minutos"], 15)
+        codigo = self.ultimo_codigo(correo)
+        self.assertNotIn("http", self.enviados[-1][2])            # ya no manda enlace
+        malo = "000000" if codigo != "000000" else "111111"
+        r = C.post("/api/auth/verify-code", json={"correo": correo, "codigo": malo})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("4 intento", r.json()["detail"])
+        # antes de verificar no puede entrar
+        limpiar_intentos()
+        self.assertEqual(C.post("/api/auth/login", json={"username": "99000010", "password": "ClaveNueva123"}).status_code, 401)
+        r = C.post("/api/auth/verify-code", json={"correo": correo.upper(), "codigo": codigo})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["estado"], "ok")
+        limpiar_intentos()
+        self.assertEqual(C.post("/api/auth/login", json={"username": "99000010", "password": "ClaveNueva123"}).status_code, 200)
+        # el código ya no sirve una segunda vez
+        self.assertEqual(C.post("/api/auth/verify-code", json={"correo": correo, "codigo": codigo}).status_code, 400)
+
+    def test_docente_queda_pendiente_de_aprobacion(self):
+        correo = "docente.codigo@itsoeh.edu.mx"
+        self.registrar(correo, "D-9001", tipo="docente")
+        r = C.post("/api/auth/verify-code", json={"correo": correo, "codigo": self.ultimo_codigo(correo)})
+        self.assertEqual(r.json()["estado"], "pendiente")
+
+    def test_cinco_intentos_invalidan_el_codigo_y_reenviar_da_otro(self):
+        correo = "intentos@itsoeh.edu.mx"
+        self.registrar(correo, "99000020")
+        bueno = self.ultimo_codigo(correo)
+        malo = "123456" if bueno != "123456" else "654321"
+        for _ in range(5):
+            C.post("/api/auth/verify-code", json={"correo": correo, "codigo": malo})
+        r = C.post("/api/auth/verify-code", json={"correo": correo, "codigo": bueno})
+        self.assertEqual(r.status_code, 400)                      # ni el bueno sirve ya
+        self.assertEqual(C.post("/api/auth/resend-verification", json={"correo": correo}).status_code, 200)
+        nuevo = self.ultimo_codigo(correo)
+        r = C.post("/api/auth/verify-code", json={"correo": correo, "codigo": nuevo})
+        self.assertEqual(r.status_code, 200, r.text)
+
+    def test_codigo_vencido(self):
+        from _entorno import bd
+        correo = "vencido@itsoeh.edu.mx"
+        self.registrar(correo, "99000030")
+        c = bd()
+        c.execute("UPDATE registros_pendientes SET expira = '2000-01-01 00:00:00' WHERE correo = ?", (correo,))
+        c.commit()
+        c.close()
+        r = C.post("/api/auth/verify-code", json={"correo": correo, "codigo": self.ultimo_codigo(correo)})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("venció", r.json()["detail"])
+
+    def test_recuperar_contrasena(self):
+        correo = "recupera@itsoeh.edu.mx"
+        self.registrar(correo, "99000040")
+        C.post("/api/auth/verify-code", json={"correo": correo, "codigo": self.ultimo_codigo(correo)})
+        sesion_vieja = entrar("99000040", "ClaveNueva123")
+
+        # correo sin cuenta: misma respuesta y no se manda nada
+        n = len(self.enviados)
+        r1 = C.post("/api/auth/forgot-password", json={"correo": "nadie@itsoeh.edu.mx"})
+        self.assertEqual(r1.status_code, 200)
+        self.assertEqual(len(self.enviados), n)
+        r2 = C.post("/api/auth/forgot-password", json={"correo": correo})
+        self.assertEqual(r2.status_code, 200)
+        self.assertEqual(len(self.enviados), n + 1)
+        self.assertEqual(r1.json()["message"].replace("nadie@", "X@"), r2.json()["message"].replace("recupera@", "X@"))
+
+        codigo = self.ultimo_codigo(correo)
+        malo = "000000" if codigo != "000000" else "111111"
+        r = C.post("/api/auth/reset-password", json={"correo": correo, "codigo": malo, "password": "OtraClave456"})
+        self.assertEqual(r.status_code, 400)
+        r = C.post("/api/auth/reset-password", json={"correo": correo, "codigo": codigo, "password": "corta"})
+        self.assertEqual(r.status_code, 422)                      # mínimo 8 caracteres
+        r = C.post("/api/auth/reset-password", json={"correo": correo, "codigo": codigo, "password": "OtraClave456"})
+        self.assertEqual(r.status_code, 200, r.text)
+
+        limpiar_intentos()
+        self.assertEqual(C.post("/api/auth/login", json={"username": "99000040", "password": "ClaveNueva123"}).status_code, 401)
+        self.assertEqual(C.post("/api/auth/login", json={"username": "99000040", "password": "OtraClave456"}).status_code, 200)
+        self.assertEqual(C.get("/api/portal/student-data", headers=sesion_vieja).status_code, 401)  # sesión cerrada
+        # el código se usa una sola vez
+        r = C.post("/api/auth/reset-password", json={"correo": correo, "codigo": codigo, "password": "Tercera789"})
+        self.assertEqual(r.status_code, 400)
+
+
 class TestMetricasPorPuerta(Base):
     def test_resumen_e_historial_por_puerta(self):
         tok_a = C.post("/api/devices", headers=self.A, json={"id": "PTA-A", "laboratorio_id": "LAB-RED", "nombre": "Puerta A"}).json()["token_api"]

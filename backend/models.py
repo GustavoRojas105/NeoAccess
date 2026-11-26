@@ -22,6 +22,17 @@ class RegisterRequest(BaseModel):
 class ResendVerificationRequest(BaseModel):
     correo: str = Field(..., max_length=120)
 
+class VerifyCodeRequest(BaseModel):
+    """Código de 6 dígitos enviado al correo al crear la cuenta."""
+    correo: str = Field(..., max_length=120)
+    codigo: str = Field(..., max_length=12)
+
+class PasswordResetRequest(BaseModel):
+    """Recuperar contraseña: código enviado al correo + contraseña nueva."""
+    correo: str = Field(..., max_length=120)
+    codigo: str = Field(..., max_length=12)
+    password: str = Field(..., min_length=8, max_length=128)
+
 class MaintenancePayload(BaseModel):
     activo: bool
     mensaje: Optional[str] = Field(None, max_length=300)

@@ -131,6 +131,25 @@ def init_db():
         fecha_solicitud TEXT DEFAULT CURRENT_TIMESTAMP
     );
     """)
+    # Verificación por código de 6 dígitos: intentos fallidos del código vigente
+    cursor.execute("PRAGMA table_info(registros_pendientes);")
+    if "intentos" not in [col[1] for col in cursor.fetchall()]:
+        cursor.execute("ALTER TABLE registros_pendientes ADD COLUMN intentos INTEGER DEFAULT 0;")
+
+    # Recuperación de contraseña por código enviado al correo institucional.
+    # Se guarda solo el hash del código; caduca en minutos y tiene intentos limitados.
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS recuperaciones_password (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        correo TEXT NOT NULL,
+        cuenta_tipo TEXT NOT NULL,
+        cuenta_id TEXT NOT NULL,
+        codigo_hash TEXT NOT NULL,
+        expira TEXT NOT NULL,
+        intentos INTEGER DEFAULT 0,
+        fecha_solicitud TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
 
     # 6. Metadatos faciales (Sec. 2, 8, RF-07, RF-15)
     # IMPORTANTE: NO se guardan fotos, solo metadatos vectoriales (128 floats en JSON)
