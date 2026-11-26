@@ -61,7 +61,7 @@ class TestA_Registro(Base):
 
     def test_baja_de_docente_no_borra_fila(self):
         J = entrar("jefe.isc", CLAVE_PRUEBA)
-        C.post("/api/users", headers=J, json={"id": "DOC-BAJA", "nombre_completo": "Docente Baja", "matricula_clave": "D-777",
+        C.post("/api/users", headers=J, json={"id": "DOC-BAJA", "nombre_completo": "Docente Baja", "matricula_clave": "777",
                                               "tipo": "docente", "carrera": ISC, "grupo_id": None, "estado": "activo"})
         C.delete("/api/users/DOC-BAJA", headers=J)
         self.assertEqual(uno("SELECT estado FROM usuarios WHERE id = 'DOC-BAJA'")[0], "inactivo")
@@ -124,8 +124,8 @@ class TestD_AprobacionYDetalle(Base):
 
     def test_jefe_aprueba_solo_docentes_de_su_carrera(self):
         J = entrar("jefe.isc", CLAVE_PRUEBA)
-        self.pendiente("DOC-P1", "D-501", ISC)
-        self.pendiente("DOC-P2", "D-502", CIV)
+        self.pendiente("DOC-P1", "501", ISC)
+        self.pendiente("DOC-P2", "502", CIV)
         self.assertEqual(C.post("/api/users/DOC-P2/approve-account", headers=J).status_code, 403)
         self.assertEqual(uno("SELECT cuenta_aprobada FROM usuarios WHERE id = 'DOC-P2'")[0], 0)   # no cambió
         self.assertEqual(C.post("/api/users/DOC-P1/approve-account", headers=J).status_code, 200)

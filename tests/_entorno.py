@@ -119,8 +119,8 @@ def sembrar():
     p("/api/groups", headers=H, json={"id": "ISC-501", "nombre": "501 Sistemas", "carrera": ISC, "semestre": 5})
     p("/api/groups", headers=H, json={"id": "CIV-301", "nombre": "301 Civil", "carrera": CIV, "semestre": 3})
     base = {"grupo_id": None, "estado": "activo"}
-    p("/api/users", headers=H, json={**base, "id": "DOC-ISC", "nombre_completo": "Laura Pérez", "matricula_clave": "D-100", "tipo": "docente", "carrera": ISC})
-    p("/api/users", headers=H, json={**base, "id": "DOC-CIV", "nombre_completo": "Ana Ruiz", "matricula_clave": "D-200", "tipo": "docente", "carrera": CIV})
+    p("/api/users", headers=H, json={**base, "id": "DOC-ISC", "nombre_completo": "Laura Pérez", "matricula_clave": "100", "tipo": "docente", "carrera": ISC})
+    p("/api/users", headers=H, json={**base, "id": "DOC-CIV", "nombre_completo": "Ana Ruiz", "matricula_clave": "200", "tipo": "docente", "carrera": CIV})
     p("/api/users", headers=H, json={"id": "AL-1", "nombre_completo": "Carlos Mendoza", "matricula_clave": "22030001", "tipo": "alumno", "carrera": ISC, "grupo_id": "ISC-501", "estado": "activo"})
     p("/api/jefes", headers=H, json={"username": "jefe.isc", "nombre": "Jefa de Sistemas", "password": CLAVE_PRUEBA, "carreras": [ISC]})
     dev = p("/api/devices", headers=H, json={"id": "RPI-RED", "laboratorio_id": "LAB-RED", "nombre": "Puerta Redes"}).json()

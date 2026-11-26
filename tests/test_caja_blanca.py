@@ -202,7 +202,7 @@ class TestValidarHorario(unittest.TestCase):
 
     def base(self, **cambios):
         d = {"dia": "Lunes", "hora_inicio": "07:00", "hora_fin": "09:00", "laboratorio": "LAB-RED",
-             "grupo": "ISC-501", "docente": "D-100", "materia": "Programación Web"}
+             "grupo": "ISC-501", "docente": "100", "materia": "Programación Web"}
         d.update(cambios)
         return d
 
@@ -227,7 +227,7 @@ class TestValidarHorario(unittest.TestCase):
             ({"grupo": ""}, "Falta el grupo"),
             ({"grupo": "NO-EXISTE"}, "no existe en el periodo actual"),
             ({"docente": ""}, "Falta el docente"),
-            ({"docente": "D-999"}, "no existe"),
+            ({"docente": "999"}, "no existe"),
             ({"docente": "22030001"}, "no está registrado como docente"),
             ({"materia": "  "}, "Falta la materia"),
             ({"materia": "Robótica Espacial"}, "no está en las materias oficiales"),
@@ -263,7 +263,7 @@ class TestValidarHorario(unittest.TestCase):
         self.assertEqual(err, [])  # otro día: no choca
 
     def test_rama_carreras_del_jefe(self):
-        h, err = self.validar(self.base(grupo="CIV-301", materia="Topografía", docente="D-200", laboratorio="LAB-CIV"), carreras=[ISC])
+        h, err = self.validar(self.base(grupo="CIV-301", materia="Topografía", docente="200", laboratorio="LAB-CIV"), carreras=[ISC])
         self.assertTrue(any("no está a su cargo" in e for e in err))
         h, err = self.validar(self.base(), carreras=[ISC])
         self.assertEqual(err, [])
@@ -317,9 +317,9 @@ class TestArchivos(unittest.TestCase):
         self.assertEqual(filas[0]["materia"], "Programación Web")
 
     def test_csv_coma_utf8_bom_y_alias(self):
-        texto = "﻿dia,entrada,salida,salon,grupo,maestro,asignatura\nMartes,7,9,LAB-RED,ISC-501,D-100,Programación Web\n"
+        texto = "﻿dia,entrada,salida,salon,grupo,maestro,asignatura\nMartes,7,9,LAB-RED,ISC-501,100,Programación Web\n"
         filas, error = hi.leer_archivo("h.csv", texto.encode("utf-8"))
-        self.assertEqual((filas[0]["dia"], filas[0]["docente"]), ("Martes", "D-100"))
+        self.assertEqual((filas[0]["dia"], filas[0]["docente"]), ("Martes", "100"))
 
     def test_ramas_de_error(self):
         casos = [

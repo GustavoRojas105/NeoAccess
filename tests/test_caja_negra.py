@@ -21,7 +21,7 @@ class Base(unittest.TestCase):
         cls.A = admin()
         cls.J = entrar("jefe.isc", CLAVE_PRUEBA)
         cls.AL = entrar("22030001", CLAVE_PRUEBA)
-        cls.DO = entrar("D-100", CLAVE_PRUEBA)
+        cls.DO = entrar("100", CLAVE_PRUEBA)
 
 
 # ───────────────────────── Inicio de sesión ─────────────────────────
@@ -36,7 +36,7 @@ class TestLogin(Base):
             ("ADMIN.PRUEBAS", CLAVE_ADMIN, 200, "administrador"),   # sin distinguir mayúsculas
             ("jefe.isc", CLAVE_PRUEBA, 200, "jefe_carrera"),
             ("22030001", CLAVE_PRUEBA, 200, "alumno"),
-            ("D-100", CLAVE_PRUEBA, 200, "docente"),
+            ("100", CLAVE_PRUEBA, 200, "docente"),
             ("admin.pruebas", "incorrecta", 401, None),
             ("no.existe", "loquesea123", 401, None),
             ("", "", 401, None),
@@ -201,9 +201,9 @@ class TestCuentas(Base):
 # ───────────────────────── Docentes (jefe) ─────────────────────────
 class TestDocentesJefe(Base):
     def test_alta_baja_reactivar(self):
-        d = {"id": "DOC-NEW", "nombre_completo": "Docente Nuevo", "matricula_clave": "D-300", "tipo": "docente", "carrera": ISC, "grupo_id": None, "estado": "activo"}
+        d = {"id": "DOC-NEW", "nombre_completo": "Docente Nuevo", "matricula_clave": "300", "tipo": "docente", "carrera": ISC, "grupo_id": None, "estado": "activo"}
         self.assertEqual(C.post("/api/users", headers=self.J, json=d).status_code, 200)
-        self.assertEqual(C.post("/api/users", headers=self.J, json={**d, "id": "DOC-N2", "matricula_clave": "D-301", "carrera": CIV}).status_code, 403)
+        self.assertEqual(C.post("/api/users", headers=self.J, json={**d, "id": "DOC-N2", "matricula_clave": "301", "carrera": CIV}).status_code, 403)
         self.assertEqual(C.post("/api/users", headers=self.J, json={**d, "id": "AL-N", "matricula_clave": "22035555", "tipo": "alumno", "grupo_id": "ISC-501"}).status_code, 403)
         self.assertEqual(C.delete("/api/users/DOC-NEW", headers=self.J).status_code, 200)
         u = [x for x in C.get("/api/users?tipo=docente", headers=self.J).json() if x["id"] == "DOC-NEW"][0]
@@ -255,7 +255,7 @@ class TestCuentasPortal(Base):
         self.assertEqual(C.put("/api/users/AL-CTA", headers=self.A, json={**al, "password": "corta"}).status_code, 400)
 
     def test_solo_admin_edita(self):
-        d = {"id": "DOC-ISC", "nombre_completo": "Laura Pérez", "matricula_clave": "D-100", "tipo": "docente",
+        d = {"id": "DOC-ISC", "nombre_completo": "Laura Pérez", "matricula_clave": "100", "tipo": "docente",
              "carrera": ISC, "grupo_id": None, "estado": "activo", "password": "hackeo1234"}
         self.assertEqual(C.put("/api/users/DOC-ISC", headers=self.J, json=d).status_code, 403)
         self.assertEqual(C.put("/api/users/DOC-ISC", headers=self.DO, json=d).status_code, 403)
@@ -323,7 +323,7 @@ class TestCodigosPorCorreo(Base):
 
     def test_docente_queda_pendiente_de_aprobacion(self):
         correo = "docente.codigo@itsoeh.edu.mx"
-        self.registrar(correo, "D-9001", tipo="docente")
+        self.registrar(correo, "9001", tipo="docente")
         r = C.post("/api/auth/verify-code", json={"correo": correo, "codigo": self.ultimo_codigo(correo)})
         self.assertEqual(r.json()["estado"], "pendiente")
 
@@ -415,12 +415,33 @@ class TestValidacionNombresMatriculas(Base):
         self.assertEqual(self.alta(id="VAL-M8", matricula_clave="19011044").status_code, 200)
         self.assertEqual(self.alta(id="VAL-M9", matricula_clave=" 250110668 ").status_code, 200)
 
-    def test_clave_de_docente(self):
+    def test_numero_de_empleado_del_docente(self):
         base = {"tipo": "docente", "nombre_completo": "Docente Validado"}
-        self.assertEqual(self.alta(id="VAL-D1", matricula_clave="doc-isc-99", **base).status_code, 200)
-        self.assertEqual(self.alta(id="VAL-D2", matricula_clave="DOC ISC 98", **base).status_code, 200)   # espacios se quitan
-        self.assertEqual(self.alta(id="VAL-D3", matricula_clave="D@C-1", **base).status_code, 400)
-        self.assertEqual(self.alta(id="VAL-D4", matricula_clave="D" * 21, **base).status_code, 400)
+        self.assertEqual(self.alta(id="VAL-D1", matricula_clave="004512", **base).status_code, 200)
+        self.assertEqual(self.alta(id="VAL-D2", matricula_clave=" 12 34 ", **base).status_code, 200)   # espacios se quitan
+        for i, mal in enumerate(("DOC-ISC-99", "12", "12345678901", "E-1234")):
+            r = self.alta(id=f"VAL-D{i + 3}", matricula_clave=mal, **base)
+            self.assertEqual(r.status_code, 400, mal)
+            self.assertIn("número de empleado", r.json()["detail"])
+        # el personal de limpieza sigue con clave de letras y números
+        self.assertEqual(self.alta(id="VAL-L1", matricula_clave="lim-99", tipo="personal_limpieza",
+                                   nombre_completo="Persona Limpieza").status_code, 200)
+
+    def test_docente_antiguo_conserva_su_clave_al_editar(self):
+        # un docente dado de alta antes con clave de letras se puede editar sin cambiarla,
+        # pero si se cambia tiene que ser ya un número de empleado
+        from _entorno import bd
+        self.assertEqual(self.alta(id="VAL-ANT", tipo="docente", nombre_completo="Docente Antiguo",
+                                   matricula_clave="7001").status_code, 200)
+        c = bd()
+        c.execute("UPDATE usuarios SET matricula_clave = 'DOC-ISC-77' WHERE id = 'VAL-ANT'")
+        c.commit()
+        c.close()
+        datos = {"id": "VAL-ANT", "nombre_completo": "Docente Antiguo", "matricula_clave": "doc-isc-77",
+                 "tipo": "docente", "carrera": ISC, "grupo_id": None, "estado": "activo"}
+        self.assertEqual(C.put("/api/users/VAL-ANT", headers=self.A, json=datos).status_code, 200)
+        self.assertEqual(C.put("/api/users/VAL-ANT", headers=self.A, json={**datos, "matricula_clave": "DOC-NUEVA"}).status_code, 400)
+        self.assertEqual(C.put("/api/users/VAL-ANT", headers=self.A, json={**datos, "matricula_clave": "7002"}).status_code, 200)
 
     def test_registro_publico_valida_igual(self):
         import backend.app as appmod
@@ -491,7 +512,7 @@ class TestPaseDeLista(Base):
         # otra persona no puede bajar una clase ajena pidiendo su horario_id
         from _entorno import poner_clave
         poner_clave("DOC-CIV")
-        otro = entrar("D-200", CLAVE_PRUEBA)
+        otro = entrar("200", CLAVE_PRUEBA)
         self.assertEqual(self.bajar(otro, formato="xlsx", fecha=self.FECHA, horario_id=self.horario).status_code, 404)
 
 
@@ -654,13 +675,13 @@ class TestImportacion(Base):
 
     def test_mas_de_1000_filas(self):
         enc = "Día,Hora inicio,Hora fin,Laboratorio,Grupo,Docente,Materia\n"
-        fila = "Lunes,7:00,8:00,LAB-RED,ISC-501,D-100,Programación Web\n"
+        fila = "Lunes,7:00,8:00,LAB-RED,ISC-501,100,Programación Web\n"
         self.assertEqual(self.subir("h.csv", (enc + fila * 1001).encode()).status_code, 400)
 
     def test_revisar_no_guarda_y_confirmar_no_duplica(self):
         enc = "Día,Hora inicio,Hora fin,Laboratorio,Grupo,Docente,Materia\n"
-        datos = (enc + "Martes,18:00,19:00,LAB-RED,ISC-501,D-100,Programación Web\n"
-                       "Martes,18:30,19:30,LAB-RED,ISC-501,D-100,Programación Web\n").encode()
+        datos = (enc + "Martes,18:00,19:00,LAB-RED,ISC-501,100,Programación Web\n"
+                       "Martes,18:30,19:30,LAB-RED,ISC-501,100,Programación Web\n").encode()
         antes = len(C.get("/api/schedules", headers=self.A).json())
         r = self.subir("h.csv", datos).json()
         self.assertEqual((r["total"], r["validas"], r["con_error"]), (2, 1, 1))     # la 2.ª choca con la 1.ª
@@ -715,7 +736,7 @@ class TestFiltros(Base):
         C.post("/api/schedules", headers=H, json={**base, "grupo_id": "CIV-301", "laboratorio_id": "LAB-CIV", "docente_id": "DOC-CIV", "materia": "Topografía"})
         tok = sembrar()["token_rpi"]
         for usuario, resultado, fecha in [("22030001", "permitido", "2026-09-01 08:00:00"), ("22030001", "denegado", "2026-09-15 08:00:00"),
-                                           ("D-200", "permitido", "2026-10-01 08:00:00")]:
+                                           ("200", "permitido", "2026-10-01 08:00:00")]:
             C.post("/api/iot/access-attempt", json={"dispositivo_id": "RPI-RED", "token_api": tok, "usuario_id": usuario,
                                                     "resultado": resultado, "motivo": "filtro", "fecha_hora": fecha})
 

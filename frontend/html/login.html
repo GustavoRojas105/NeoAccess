@@ -31,7 +31,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
-  <script src="/scripts/validaciones.js?v=20261126_1"></script>
+  <script src="/scripts/validaciones.js?v=20261126_2"></script>
   <link rel="stylesheet" href="/styles/style.css?v=20261124_02">
 </head>
 <body class="bg-slate-900 text-slate-800 antialiased min-h-screen flex items-center justify-center p-4">
@@ -330,7 +330,7 @@
 
       document.getElementById("reg-tipo").addEventListener("change", (e) => {
         document.getElementById("reg-matricula-label").textContent =
-          e.target.value === "docente" ? "Clave de empleado" : "Matrícula";
+          e.target.value === "docente" ? "Número de empleado" : "Matrícula";
       });
 
       // Resultado del enlace de verificación (/verificar redirige aquí)

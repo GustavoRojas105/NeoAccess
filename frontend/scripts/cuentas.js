@@ -4,7 +4,7 @@
  * contraseña y baja/reactivación. Mismo estilo que "Jefes de carrera".
  */
 const CUENTA_PERFILES = {
-  docente: { nombre: "docente", clave: "Clave docente *", vacio: "Aún no hay docentes." },
+  docente: { nombre: "docente", clave: "Número de empleado *", vacio: "Aún no hay docentes." },
   alumno: { nombre: "alumno", clave: "Matrícula *", vacio: "Aún no hay alumnos." },
   personal_limpieza: { nombre: "personal de limpieza", clave: "Clave *", vacio: "Aún no hay personal de limpieza." },
 };
@@ -91,6 +91,7 @@ async function abrirModalCuenta(tipo, userId) {
   document.getElementById("cuenta-nombre").value = u ? u.nombre_completo : "";
   document.getElementById("cuenta-clave").value = u ? u.matricula_clave : "";
   document.getElementById("cuenta-clave").dataset.tipo = tipo;
+  document.getElementById("cuenta-clave").dataset.actual = u ? u.matricula_clave : "";
   if (window.revisarCampo) ["cuenta-nombre", "cuenta-clave"].forEach(id => revisarCampo(document.getElementById(id)));
   document.getElementById("cuenta-estado-box").classList.toggle("hidden", !u);
   document.getElementById("cuenta-estado").value = u ? u.estado : "activo";

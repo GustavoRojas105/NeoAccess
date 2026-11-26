@@ -2497,7 +2497,7 @@ def get_users(
 
 TIPOS_USUARIO = ("alumno", "docente", "personal_limpieza")
 
-def _validar_usuario(payload: UserCreate, cursor) -> dict:
+def _validar_usuario(payload: UserCreate, cursor, clave_actual: str | None = None) -> dict:
     """Normaliza y valida los datos de un usuario; lanza 400 con un mensaje claro."""
     datos = {
         "id": (payload.id or "").strip().upper(),
@@ -2516,7 +2516,7 @@ def _validar_usuario(payload: UserCreate, cursor) -> dict:
     if datos["tipo"] not in TIPOS_USUARIO:
         raise HTTPException(status_code=400, detail="Tipo de usuario inválido.")
     datos["nombre_completo"] = normalizar_nombre(datos["nombre_completo"])
-    datos["matricula_clave"] = normalizar_matricula(datos["matricula_clave"], datos["tipo"])
+    datos["matricula_clave"] = normalizar_matricula(datos["matricula_clave"], datos["tipo"], clave_actual)
     if datos["estado"] not in ("activo", "inactivo"):
         raise HTTPException(status_code=400, detail="Estado inválido.")
     if datos["grupo_id"]:
@@ -2573,10 +2573,10 @@ def update_user(user_id: str, payload: UserCreate, admin: dict = Depends(get_cur
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        actual = cursor.execute("SELECT tipo, estado FROM usuarios WHERE id = ?", (user_id,)).fetchone()
+        actual = cursor.execute("SELECT tipo, estado, matricula_clave FROM usuarios WHERE id = ?", (user_id,)).fetchone()
         if not actual:
             raise HTTPException(status_code=404, detail="Usuario no encontrado.")
-        d = _validar_usuario(payload, cursor)
+        d = _validar_usuario(payload, cursor, actual["matricula_clave"])
         cursor.execute("SELECT 1 FROM usuarios WHERE matricula_clave = ? AND id <> ?", (d["matricula_clave"], user_id))
         if cursor.fetchone():
             raise HTTPException(status_code=400, detail="Esa matrícula/clave ya pertenece a otro usuario.")

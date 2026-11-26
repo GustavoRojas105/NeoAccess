@@ -5,12 +5,14 @@
  *   <input data-valida="nombre">                      -> se escribe en MAYÚSCULAS, solo letras
  *   <input data-valida="matricula" data-tipo="alumno"> -> 8 o 9 números (19011044, 230110427)
  *   <input data-valida="matricula" data-tipo-de="id-del-select"> -> toma el tipo de ese select
- *   Docente / personal: clave de 3 a 20 letras, números o guiones (DOC-ISC-01).
+ *   Docente: número de empleado de RH, solo números (3 a 10). Personal: clave como LIM-01.
+ *   data-actual="..." -> la clave que ya tenía (docentes antiguos tipo DOC-ISC-01) se respeta.
  */
 (function () {
   const NOMBRE_RE = /^[A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ .'-]{2,119}$/;
   const MATRICULA_RE = /^\d{8,9}$/;
   const CLAVE_RE = /^[A-Z0-9-]{3,20}$/;
+  const EMPLEADO_RE = /^\d{3,10}$/;
 
   function tipoDe(el) {
     if (el.dataset.tipoDe) {
@@ -40,7 +42,17 @@
           : "El nombre solo puede tener letras y espacios (también acentos, ñ, punto, guion y apóstrofo).";
       }
     } else if (regla === "matricula") {
-      if (tipoDe(el) === "alumno") {
+      const actual = (el.dataset.actual || "").toUpperCase();
+      if (actual && el.value.trim().toUpperCase() === actual) {
+        el.maxLength = 40;
+        mensaje = "";
+      } else if (tipoDe(el) === "docente") {
+        el.maxLength = 10;
+        el.inputMode = "numeric";
+        el.placeholder = "Número de empleado (RH)";
+        conCursor(el, el.value.replace(/\D/g, "").slice(0, 10));
+        if (el.value && !EMPLEADO_RE.test(el.value)) mensaje = "El número de empleado debe tener de 3 a 10 números (es el que asigna Recursos Humanos).";
+      } else if (tipoDe(el) === "alumno") {
         el.maxLength = 9;
         el.inputMode = "numeric";
         el.placeholder = "Ej: 230110427";
@@ -49,9 +61,9 @@
       } else {
         el.maxLength = 20;
         el.inputMode = "text";
-        el.placeholder = "Ej: DOC-ISC-01";
+        el.placeholder = "Ej: LIM-01";
         conCursor(el, el.value.toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 20));
-        if (el.value && !CLAVE_RE.test(el.value)) mensaje = "La clave debe tener de 3 a 20 letras, números o guiones (p. ej. DOC-ISC-01).";
+        if (el.value && !CLAVE_RE.test(el.value)) mensaje = "La clave debe tener de 3 a 20 letras, números o guiones (p. ej. LIM-01).";
       }
     }
     el.removeAttribute("pattern");

@@ -1514,9 +1514,9 @@ bash neoaccess/setup_rpi.sh</pre>
           <input type="text" id="staff-new-name" data-valida="nombre" required minlength="3" maxlength="120" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg">
         </div>
         <div>
-          <label class="block font-semibold text-slate-700 mb-1">Clave institucional *</label>
-          <input type="text" id="staff-new-clave" data-valida="matricula" data-tipo="docente" required minlength="3" maxlength="40" placeholder="DOC-1234" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg uppercase">
-          <p class="text-[10px] text-slate-400 mt-1">Con esta clave se identifica en el sistema.</p>
+          <label id="staff-new-clave-label" class="block font-semibold text-slate-700 mb-1">Número de empleado *</label>
+          <input type="text" id="staff-new-clave" data-valida="matricula" data-tipo-de="staff-new-type" required minlength="3" maxlength="40" placeholder="DOC-1234" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg uppercase">
+          <p class="text-[10px] text-slate-400 mt-1">Docente: el número de empleado que asigna RH. Personal: una clave como LIM-01.</p>
         </div>
         <div>
           <label class="block font-semibold text-slate-700 mb-1">Carrera / Área</label>
@@ -1640,7 +1640,7 @@ bash neoaccess/setup_rpi.sh</pre>
           <div>
             <label id="cuenta-clave-label" class="block font-semibold text-slate-700 mb-1">Clave *</label>
             <input type="text" id="cuenta-clave" data-valida="matricula" required minlength="2" maxlength="40" pattern="[A-Za-z0-9\-]+" autocomplete="off" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg uppercase">
-            <p class="text-[10px] text-slate-400 mt-0.5">Con esto inicia sesión. Alumno: 8 o 9 números. Otros: letras, números y guiones.</p>
+            <p class="text-[10px] text-slate-400 mt-0.5">Con esto inicia sesión. Alumno: matrícula de 8 o 9 números. Docente: número de empleado de RH.</p>
           </div>
           <div id="cuenta-estado-box" class="hidden">
             <label class="block font-semibold text-slate-700 mb-1">Estado</label>
@@ -1794,7 +1794,7 @@ bash neoaccess/setup_rpi.sh</pre>
   </div>
 
   <!-- Scripts modulares de la aplicación con cache-busting -->
-  <script src="/scripts/validaciones.js?v=20261126_1"></script>
+  <script src="/scripts/validaciones.js?v=20261126_2"></script>
   <script src="/scripts/dialogs.js?v=20261124_11"></script>
   <script src="/scripts/materias.js?v=20261125_1"></script>
   <script src="/scripts/eliminar.js?v=20261124_11"></script>
@@ -1809,6 +1809,6 @@ bash neoaccess/setup_rpi.sh</pre>
   <script src="/scripts/admins.js?v=20261124_11"></script>
   <script src="/scripts/horario_portal.js?v=20261124_11"></script>
   <script src="/scripts/periodos.js?v=20261124_11"></script>
-  <script src="/scripts/cuentas.js?v=20261126_1"></script>
+  <script src="/scripts/cuentas.js?v=20261126_2"></script>
 </body>
 </html>
