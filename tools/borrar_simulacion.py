@@ -7,7 +7,8 @@ Al borrar esas puertas se borran también sus accesos, bitácora de limpieza, ev
 Antes de borrar se guarda un respaldo en database/respaldos/.
 
 Uso (desde la carpeta NeoAccess):
-    python tools\\borrar_simulacion.py          -> muestra qué se borraría
+    python tools\\borrar_simulacion.py          -> muestra qué se borraría y pregunta si borrarlo
+    borrar_simulacion.bat                        -> lo mismo, con doble clic
     python tools\\borrar_simulacion.py --si     -> lo borra (con respaldo previo)
 """
 import os
@@ -43,8 +44,18 @@ def main(argv):
     for nombre, n in resumen(con, ids).items():
         print(f"  {n:>5}  {nombre}")
     if "--si" not in argv:
-        print("\nNo se borró nada. Para borrarlo: python tools\\borrar_simulacion.py --si")
-        return 0
+        # Abierto a mano (doble clic o sin --si): preguntar en vez de solo listar
+        if sys.stdin and sys.stdin.isatty():
+            try:
+                resp = input("\n¿Borrar todo esto? Se guarda un respaldo antes (s/n): ")
+            except EOFError:
+                resp = ""
+            if resp.strip().lower() not in ("s", "si", "sí", "y", "yes"):
+                print("No se borró nada.")
+                return 0
+        else:
+            print("\nNo se borró nada. Para borrarlo: python tools\\borrar_simulacion.py --si")
+            return 0
 
     con.close()
     carpeta = os.path.join(os.path.dirname(db), "respaldos")

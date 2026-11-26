@@ -49,7 +49,7 @@ NeoAccess/
 │
 ├── tools/                         # Herramientas de PC
 │   ├── simulador_puerta.py        # Simulador de la puerta (página web) conectado a la plataforma
-│   ├── borrar_simulacion.py       # Borra todo lo generado por el simulador (puertas SIM-*)
+│   ├── borrar_simulacion.py       # Borra todo lo generado por el simulador (puertas SIM-*) · doble clic: borrar_simulacion.bat
 │   ├── asignar_contrasena.py      # Contraseña de portal para un usuario
 │   ├── entrenar_pkl_lote.py
 │   ├── plantilla_alumnos.ejemplo.csv   # Copiar a plantilla_alumnos.csv
