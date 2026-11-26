@@ -31,6 +31,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="/scripts/validaciones.js?v=20261126_1"></script>
   <link rel="stylesheet" href="/styles/style.css?v=20261124_02">
 </head>
 <body class="bg-slate-900 text-slate-800 antialiased min-h-screen flex items-center justify-center p-4">
@@ -125,13 +126,13 @@
       </div>
       <div>
         <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Nombre completo</label>
-        <input type="text" id="reg-nombre" required minlength="3" maxlength="120" autocomplete="name"
+        <input type="text" id="reg-nombre" data-valida="nombre" required minlength="3" maxlength="120" autocomplete="name"
           class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-slate-50">
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label id="reg-matricula-label" class="block text-xs font-semibold uppercase text-slate-600 mb-1">Matrícula</label>
-          <input type="text" id="reg-matricula" required minlength="3" maxlength="40" pattern="[A-Za-z0-9\-]+"
+          <input type="text" id="reg-matricula" data-valida="matricula" data-tipo-de="reg-tipo" required
             class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-slate-50">
         </div>
         <div>

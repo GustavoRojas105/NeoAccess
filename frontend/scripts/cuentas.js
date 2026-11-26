@@ -90,6 +90,8 @@ async function abrirModalCuenta(tipo, userId) {
   document.getElementById("cuenta-clave-label").textContent = perfil.clave;
   document.getElementById("cuenta-nombre").value = u ? u.nombre_completo : "";
   document.getElementById("cuenta-clave").value = u ? u.matricula_clave : "";
+  document.getElementById("cuenta-clave").dataset.tipo = tipo;
+  if (window.revisarCampo) ["cuenta-nombre", "cuenta-clave"].forEach(id => revisarCampo(document.getElementById(id)));
   document.getElementById("cuenta-estado-box").classList.toggle("hidden", !u);
   document.getElementById("cuenta-estado").value = u ? u.estado : "activo";
   document.getElementById("cuenta-carrera-box").classList.toggle("hidden", tipo === "personal_limpieza");

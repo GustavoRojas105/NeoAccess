@@ -244,7 +244,7 @@ class TestCuentasPortal(Base):
         self.assertTrue(H)
         # Editar sin contraseña: conserva la actual
         self.assertEqual(C.put("/api/users/AL-CTA", headers=self.A, json={**al, "nombre_completo": "Alumno Editado", "password": None}).status_code, 200)
-        self.assertEqual(self.flag("AL-CTA", "alumno")["nombre_completo"], "Alumno Editado")
+        self.assertEqual(self.flag("AL-CTA", "alumno")["nombre_completo"], "ALUMNO EDITADO")   # se guarda en mayúsculas
         self.assertTrue(entrar("22039999", "primera123"))
         # Cambiar contraseña: la vieja ya no sirve y la sesión abierta se cierra
         self.assertEqual(C.put("/api/users/AL-CTA", headers=self.A, json={**al, "password": "segunda123"}).status_code, 200)
@@ -385,6 +385,53 @@ class TestCodigosPorCorreo(Base):
         # el código se usa una sola vez
         r = C.post("/api/auth/reset-password", json={"correo": correo, "codigo": codigo, "password": "Tercera789"})
         self.assertEqual(r.status_code, 400)
+
+
+class TestValidacionNombresMatriculas(Base):
+    """Nombres en MAYÚSCULAS y solo letras; matrícula de alumno de 8 o 9 números; clave de docente."""
+
+    def alta(self, **cambios):
+        datos = {"id": "VAL-1", "nombre_completo": "  maría   josé  peña ", "matricula_clave": "230110999",
+                 "tipo": "alumno", "carrera": ISC, "grupo_id": None, "estado": "activo", **cambios}
+        return C.post("/api/users", headers=self.A, json=datos)
+
+    def test_nombre_se_guarda_en_mayusculas(self):
+        r = self.alta()
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertIn("MARÍA JOSÉ PEÑA", r.json()["message"])
+        usuarios = C.get("/api/users", headers=self.A).json()
+        self.assertEqual([u["nombre_completo"] for u in usuarios if u["id"] == "VAL-1"], ["MARÍA JOSÉ PEÑA"])
+
+    def test_nombres_invalidos(self):
+        for nombre in ("Juan123", "Ana@Ruiz", "AB", "-Pedro"):
+            r = self.alta(id="VAL-N", nombre_completo=nombre, matricula_clave="230110998")
+            self.assertEqual(r.status_code, 400, nombre)
+        self.assertEqual(self.alta(id="VAL-N2", nombre_completo="Ma. Guadalupe O'Neil-Ruiz", matricula_clave="230110997").status_code, 200)
+
+    def test_matricula_de_alumno_limites(self):
+        # 7 y 10 dígitos, con letras o espacios en medio: no; 8 y 9 dígitos: sí
+        for i, mat in enumerate(("2301104", "2030110539", "23011A427", "ABC-123")):
+            self.assertEqual(self.alta(id=f"VAL-M{i}", matricula_clave=mat).status_code, 400, mat)
+        self.assertEqual(self.alta(id="VAL-M8", matricula_clave="19011044").status_code, 200)
+        self.assertEqual(self.alta(id="VAL-M9", matricula_clave=" 250110668 ").status_code, 200)
+
+    def test_clave_de_docente(self):
+        base = {"tipo": "docente", "nombre_completo": "Docente Validado"}
+        self.assertEqual(self.alta(id="VAL-D1", matricula_clave="doc-isc-99", **base).status_code, 200)
+        self.assertEqual(self.alta(id="VAL-D2", matricula_clave="DOC ISC 98", **base).status_code, 200)   # espacios se quitan
+        self.assertEqual(self.alta(id="VAL-D3", matricula_clave="D@C-1", **base).status_code, 400)
+        self.assertEqual(self.alta(id="VAL-D4", matricula_clave="D" * 21, **base).status_code, 400)
+
+    def test_registro_publico_valida_igual(self):
+        import backend.app as appmod
+        appmod._REGISTRO_INTENTOS.clear()
+        r = C.post("/api/auth/register", json={"tipo": "alumno", "nombre_completo": "Juan 2", "matricula_clave": "230110111",
+                                               "correo": "juan.val@itsoeh.edu.mx", "password": "ClaveNueva123"})
+        self.assertEqual(r.status_code, 400)
+        r = C.post("/api/auth/register", json={"tipo": "alumno", "nombre_completo": "Juan Val", "matricula_clave": "2301101112",
+                                               "correo": "juan.val@itsoeh.edu.mx", "password": "ClaveNueva123"})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("8 o 9 números", r.json()["detail"])
 
 
 class TestPaseDeLista(Base):

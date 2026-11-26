@@ -26,6 +26,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from database.database import get_connection, init_db, periodo_siguiente
 from backend.mailer import send_email, smtp_configured
+from backend.validaciones import normalizar_nombre, normalizar_matricula
 from backend.horarios_import import validar_horario, leer_archivo, generar_plantilla, cargar_materias
 from backend.auth import (
     hash_password, verify_password, needs_rehash, create_session,
@@ -444,7 +445,6 @@ from fastapi.responses import RedirectResponse
 
 DOMINIO_INSTITUCIONAL = "itsoeh.edu.mx"
 _CORREO_RE = re.compile(r"^[a-z0-9._%+-]+@itsoeh\.edu\.mx$")
-_MATRICULA_RE = re.compile(r"^[A-Za-z0-9-]{3,40}$")
 VERIFICACION_HORAS = 24          # enlaces antiguos (/verificar)
 CODIGO_MINUTOS = 15              # vigencia del código de 6 dígitos
 CODIGO_INTENTOS = 5              # intentos fallidos antes de invalidar el código
@@ -539,10 +539,8 @@ def register_account(payload: RegisterRequest, request: Request):
         raise maintenance_exception(state)
     _registro_rate_limit(request.client.host if request.client else "desconocido")
     correo = _normalizar_correo(payload.correo)
-    matricula = payload.matricula_clave.strip().upper()
-    if not _MATRICULA_RE.match(matricula):
-        raise HTTPException(status_code=400, detail="La matrícula o clave solo puede tener letras, números y guiones.")
-    nombre = " ".join(payload.nombre_completo.split())
+    matricula = normalizar_matricula(payload.matricula_clave, payload.tipo)
+    nombre = normalizar_nombre(payload.nombre_completo)
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -2072,7 +2070,7 @@ def list_admins(admin: dict = Depends(get_current_admin)):
 @app.post("/api/admins")
 def create_admin(payload: AdminCreate, admin: dict = Depends(get_current_admin)):
     username = payload.username.strip().lower()
-    nombre = " ".join(payload.nombre.split())
+    nombre = normalizar_nombre(payload.nombre)
     email = (payload.email or "").strip().lower() or None
     if email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
         raise HTTPException(status_code=400, detail="El correo no tiene un formato válido.")
@@ -2302,7 +2300,7 @@ def list_jefes(admin: dict = Depends(get_current_admin)):
 @app.post("/api/jefes")
 def create_jefe(payload: JefeCreate, admin: dict = Depends(get_current_admin)):
     username = payload.username.strip().lower()
-    nombre = " ".join(payload.nombre.split())
+    nombre = normalizar_nombre(payload.nombre)
     email = (payload.email or "").strip().lower() or None
     if email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
         raise HTTPException(status_code=400, detail="El correo no tiene un formato válido.")
@@ -2505,7 +2503,7 @@ def _validar_usuario(payload: UserCreate, cursor) -> dict:
         "id": (payload.id or "").strip().upper(),
         "nombre_completo": " ".join((payload.nombre_completo or "").split()),
         "tipo": (payload.tipo or "").strip(),
-        "matricula_clave": (payload.matricula_clave or "").strip(),
+        "matricula_clave": "".join((payload.matricula_clave or "").split()).upper(),
         "carrera": (payload.carrera or "").strip() or None,
         "grupo_id": (payload.grupo_id or "").strip().upper() or None,
         "estado": (payload.estado or "activo").strip() or "activo",
@@ -2517,6 +2515,8 @@ def _validar_usuario(payload: UserCreate, cursor) -> dict:
         raise HTTPException(status_code=400, detail="El ID, el nombre y la matrícula/clave son obligatorios.")
     if datos["tipo"] not in TIPOS_USUARIO:
         raise HTTPException(status_code=400, detail="Tipo de usuario inválido.")
+    datos["nombre_completo"] = normalizar_nombre(datos["nombre_completo"])
+    datos["matricula_clave"] = normalizar_matricula(datos["matricula_clave"], datos["tipo"])
     if datos["estado"] not in ("activo", "inactivo"):
         raise HTTPException(status_code=400, detail="Estado inválido.")
     if datos["grupo_id"]:

@@ -118,7 +118,7 @@ class TestC_Sesiones(Base):
 
 class TestD_AprobacionYDetalle(Base):
     def pendiente(self, uid, clave, carrera):
-        C.post("/api/users", headers=self.A, json={"id": uid, "nombre_completo": f"Docente {uid}", "matricula_clave": clave,
+        C.post("/api/users", headers=self.A, json={"id": uid, "nombre_completo": "Docente Pendiente " + "ABCDEFGHIJ"[int(uid[-1])], "matricula_clave": clave,
                                                    "tipo": "docente", "carrera": carrera, "grupo_id": None, "estado": "activo"})
         c = bd(); c.execute("UPDATE usuarios SET cuenta_aprobada = 0 WHERE id = ?", (uid,)); c.commit(); c.close()
 
