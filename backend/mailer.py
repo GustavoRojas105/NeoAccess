@@ -70,7 +70,7 @@ def send_email(to: str, subject: str, text: str, html: str = None) -> bool:
     host = os.environ["NEOACCESS_SMTP_HOST"]
     port = int(os.environ.get("NEOACCESS_SMTP_PORT", "587"))
     user = os.environ["NEOACCESS_SMTP_USER"]
-    password = os.environ.get("NEOACCESS_SMTP_PASSWORD", "")
+    password = os.environ.get("NEOACCESS_SMTP_PASSWORD", "").replace(" ", "")  # Google la muestra en bloques de 4
     sender = os.environ.get("NEOACCESS_SMTP_FROM", user)
 
     msg = EmailMessage()
