@@ -449,6 +449,56 @@ class TestRaspberryConfig(unittest.TestCase):
         shutil.rmtree(carpeta)
 
 
+def _cargar_boton():
+    """Extrae los métodos del botón de rpi_main (sin importar cámara/GPIO)."""
+    src = io.open(os.path.join(RAIZ, "raspberry_pi", "rpi_main.py"), encoding="utf-8").read()
+    arbol = ast.parse(src)
+    nombres = ("cuenta_regresiva", "tomar_foto", "verificar_con_boton")
+    fns = [n for c in arbol.body if isinstance(c, ast.ClassDef) for n in c.body
+           if isinstance(n, ast.FunctionDef) and n.name in nombres]
+    ns = {"time": __import__("time")}
+    exec(compile(ast.Module(fns, []), "rpi_main.boton", "exec"), ns)
+    return ns
+
+
+class TestBotonRaspberry(unittest.TestCase):
+    """Botón: cuenta regresiva de N segundos, luego foto y verificación."""
+
+    def nodo(self, imagenes):
+        ns = _cargar_boton()
+        n = types.SimpleNamespace(countdown_seconds=5, senales=[], negados=0, procesados=[])
+        n._senal_cuenta = lambda ultimo: n.senales.append(ultimo)
+        n.deny_door = lambda: setattr(n, "negados", n.negados + 1)
+        n.identify_face_vector = lambda v: ({"usuario_id": "U1", "nombre": "Ana"}, 0.9)
+        n.process_access = lambda v: n.procesados.append(v) or {"resultado": "permitido"}
+        for k in ("cuenta_regresiva", "tomar_foto", "verificar_con_boton"):
+            setattr(n, k, types.MethodType(ns[k], n))
+        lecturas = iter(imagenes)
+        n.camara = types.SimpleNamespace(read=lambda: next(lecturas, "vacia"))
+        n.motor = types.SimpleNamespace(extract_vector=lambda f: ([0.1, 0.2], 0.95) if f == "rostro" else (None, 0.0))
+        return n
+
+    def test_cuenta_cinco_segundos_y_verifica(self):
+        n = self.nodo(["viejo"] * 4 + ["rostro"])
+        r = n.verificar_con_boton(n.camara, n.motor)
+        self.assertEqual(n.senales, [False, False, False, False, True])  # 5 señales, la última larga
+        self.assertEqual(r, {"resultado": "permitido"})
+        self.assertEqual(n.procesados, [[0.1, 0.2]])
+        self.assertEqual(n.negados, 0)
+
+    def test_descarta_imagenes_viejas_del_bufer(self):
+        # Las 4 primeras lecturas son del búfer (antes de terminar la cuenta): no cuentan
+        n = self.nodo(["rostro"] * 4 + ["vacia"])
+        r = n.tomar_foto(n.camara, n.motor, intentos_seg=0)
+        self.assertEqual(r, (None, 0.0))
+
+    def test_sin_rostro_niega_y_no_registra(self):
+        n = self.nodo([])
+        r = n.verificar_con_boton(n.camara, n.motor)
+        self.assertIsNone(r)
+        self.assertEqual((n.negados, n.procesados), (1, []))
+
+
 class TestPortalJS(unittest.TestCase):
     def test_estado_de_la_clase_limites(self):
         ruta = os.path.join(RAIZ, "frontend", "scripts", "horario_portal.js").replace("\\", "/")

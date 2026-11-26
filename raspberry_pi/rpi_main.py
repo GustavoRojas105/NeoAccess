@@ -170,6 +170,12 @@ class NeoAccessRaspberryNode:
         self.repeat_cooldown = self.config.get("segundos_espera_mismo_usuario", 10)
         self.camera_index = self.config.get("camara_indice", 0)
         self.frame_size = tuple(self.config.get("resolucion_camara", [320, 240]))
+        # Botón físico: "boton" = se toma la foto N segundos después de presionarlo;
+        # "continuo" = la cámara busca rostros todo el tiempo (modo anterior).
+        self.capture_mode = str(self.config.get("modo_captura", "boton")).lower()
+        self.pin_boton = self.config.get("pin_boton_gpio", 24)
+        self.countdown_seconds = self.config.get("segundos_cuenta_regresiva", 5)
+        self.boton_presionado = threading.Event()
 
         self.running = True
         self.door_lock = threading.Lock()   # una sola acción de puerta a la vez
@@ -231,6 +237,13 @@ class NeoAccessRaspberryNode:
             GPIO.setup(self.pin_led_rojo, GPIO.OUT, initial=GPIO.LOW)
             GPIO.setup(self.pin_buzzer, GPIO.OUT, initial=GPIO.LOW)
             print(f"[GPIO OK] Relevador de cerradura configurado en GPIO {self.pin_cerradura}.")
+            if self.capture_mode == "boton":
+                # Botón entre el GPIO y GND: resistencia pull-up interna, se lee LOW al presionar
+                GPIO.setup(self.pin_boton, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+                GPIO.add_event_detect(self.pin_boton, GPIO.FALLING,
+                                      callback=lambda _canal: self.boton_presionado.set(),
+                                      bouncetime=300)
+                print(f"[GPIO OK] Botón de verificación en GPIO {self.pin_boton}.")
         else:
             print("[INFO] GPIO físico no disponible. Ejecutando en modo consola simulada.")
 
@@ -582,6 +595,92 @@ class NeoAccessRaspberryNode:
         self.last_decision[key] = now
         return False
 
+    # -------------------------------------------------------------
+    # MODO BOTÓN: presionar -> cuenta regresiva -> foto -> verificación
+    # -------------------------------------------------------------
+    def start_keyboard_button(self):
+        """Sin GPIO (pruebas en PC): la tecla Enter hace de botón."""
+        if HARDWARE_GPIO_AVAILABLE or not sys.stdin or not sys.stdin.isatty():
+            return
+
+        def leer():
+            while self.running:
+                try:
+                    input()
+                except (EOFError, OSError):
+                    return
+                self.boton_presionado.set()
+        threading.Thread(target=leer, daemon=True).start()
+        print("[INFO] Sin botón físico: presione Enter para simular el botón.")
+
+    def _senal_cuenta(self, ultimo: bool):
+        """Parpadeo del LED verde y pitido corto en cada segundo de la cuenta."""
+        if not HARDWARE_GPIO_AVAILABLE:
+            time.sleep(1)
+            return
+        pin = self.pin_led_verde
+        GPIO.output(pin, GPIO.HIGH)
+        GPIO.output(self.pin_buzzer, GPIO.HIGH)
+        time.sleep(0.25 if ultimo else 0.08)
+        GPIO.output(self.pin_buzzer, GPIO.LOW)
+        time.sleep(0.15)
+        GPIO.output(pin, GPIO.LOW)
+        time.sleep(0.75 if not ultimo else 0.6)
+
+    def cuenta_regresiva(self):
+        n = max(0, int(self.countdown_seconds))
+        print(f"[BOTÓN] Presionado. Mire a la cámara, foto en {n} s...")
+        for i in range(n, 0, -1):
+            print(f"[BOTÓN] {i}...")
+            self._senal_cuenta(ultimo=(i == 1))
+
+    def tomar_foto(self, camera, engine, intentos_seg: float = 2.0):
+        """Toma la foto al terminar la cuenta y extrae el vector facial.
+        Si en la primera imagen no se ve un rostro, sigue probando hasta intentos_seg."""
+        for _ in range(4):           # descartar imágenes viejas del búfer de la cámara
+            camera.read()
+        limite = time.time() + intentos_seg
+        while True:
+            frame = camera.read()
+            if frame is not None:
+                vector, score = engine.extract_vector(frame)
+                del frame            # RF-07: la imagen se descarta de RAM inmediatamente
+                if vector is not None:
+                    return vector, score
+            if time.time() >= limite:
+                return None, 0.0
+            time.sleep(0.1)
+
+    def verificar_con_boton(self, camera, engine):
+        """Un ciclo completo del botón. Devuelve el registro de acceso o None si no hubo rostro."""
+        self.cuenta_regresiva()
+        print("[BOTÓN] Tomando foto...")
+        vector, score = self.tomar_foto(camera, engine)
+        if vector is None:
+            print("[BOTÓN] No se detectó un rostro. Presione el botón de nuevo y mire a la cámara.")
+            self.deny_door()
+            return None
+        user, sim = self.identify_face_vector(vector)
+        nombre = user["nombre"] if user else "desconocido"
+        print(f"[RECONOCIMIENTO] Rostro detectado (conf. {score:.2f}) -> {nombre} (similitud {sim:.3f})")
+        registro = self.process_access(vector)
+        del vector
+        return registro
+
+    def _ciclo_boton(self, camera, engine):
+        self.start_keyboard_button()
+        print(f"\n[RECONOCIMIENTO] Cámara lista. Presione el botón para verificar "
+              f"(foto a los {self.countdown_seconds} s).")
+        while self.running:
+            if not self.boton_presionado.wait(timeout=0.5):
+                continue
+            self.boton_presionado.clear()
+            try:
+                self.verificar_con_boton(camera, engine)
+            except Exception as e:
+                print(f"[BOTÓN] Error durante la verificación: {e}")
+            self.boton_presionado.clear()   # ignorar lo que se presionó mientras verificaba
+
     def run_recognition_loop(self):
         try:
             engine = FaceEngine(min_face_px=self.config.get("tamano_minimo_rostro_px", 60))
@@ -591,6 +690,13 @@ class NeoAccessRaspberryNode:
             print("        El nodo seguirá activo para latido y apertura remota.")
             while self.running:
                 time.sleep(1)
+            return
+
+        if self.capture_mode == "boton":
+            try:
+                self._ciclo_boton(camera, engine)
+            finally:
+                camera.close()
             return
 
         print("\n[RECONOCIMIENTO] Cámara lista. Esperando rostros frente a la puerta...")

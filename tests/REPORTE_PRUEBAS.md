@@ -16,11 +16,11 @@ Cada tipo corre en un proceso aparte con una **base de datos temporal nueva**. L
 
 | Tipo | Archivo | Pruebas | Resultado |
 |---|---|---|---|
-| Caja blanca | `test_caja_blanca.py` | 40 | ✅ 40 pasan |
+| Caja blanca | `test_caja_blanca.py` | 43 | ✅ 43 pasan |
 | Caja negra (API) | `test_caja_negra.py` | 39 | ✅ 39 pasan |
 | Caja gris | `test_caja_gris.py` | 19 | ✅ 19 pasan |
 | Caja negra (interfaz) | navegador, manual asistida | 9 escenarios | ✅ todos correctos |
-| **Total automatizadas** | | **98** | **✅ 98 pasan** |
+| **Total automatizadas** | | **101** | **✅ 101 pasan** |
 
 Muchas pruebas usan `subTest` con tablas de casos. En total se revisan **más de 200 combinaciones** de entrada.
 
@@ -66,6 +66,7 @@ Se recorren las ramas de cada función interna:
 - **Raspberry (`validate_schedule`)**:
   - límites 06:49 ❌, 06:50 ✅, 09:00 ✅ y 09:01 ❌;
   - tolerancia ausente, inválida o negativa, otro día, limpieza y administrador.
+- **Raspberry (botón)**: cuenta regresiva de 5 s con la última señal larga, descarte de imágenes viejas del búfer y sin rostro → LED rojo sin registrar acceso.
 - **Portal (JavaScript, con Node)**: `hpEstadoClase` en sus límites y el texto de "faltan X min".
 
 ### Caja negra: solo entradas y salidas de la API

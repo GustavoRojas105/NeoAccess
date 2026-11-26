@@ -47,8 +47,12 @@ Conecta tu módulo de relevador (Relay) de 5V y tus indicadores a los pines de l
 | **LED Indicador Verde** | **GPIO 27** | Pin 13 | Indica acceso permitido / en horario |
 | **LED Indicador Rojo** | **GPIO 22** | Pin 15 | Indica acceso denegado / fuera de horario |
 | **Zumbador (Buzzer)** | **GPIO 23** | Pin 16 | Pitido de confirmación sonora |
+| **Botón de verificación** | **GPIO 24** | Pin 18 | La otra pata del botón va a **GND (Pin 20)** |
 | **VCC Relevador** | **5V Power** | Pin 2 o 4 | Alimentación de 5V |
 | **GND Relevador** | **Ground** | Pin 6 o 9 | Tierra común |
+
+> **Cómo funciona el botón:** la persona presiona el botón, el LED verde parpadea y suena un pitido cada segundo durante **5 segundos** (para que se acomode frente a la cámara) y al final se toma la foto y se verifica. Si no se ve un rostro, se enciende el LED rojo y hay que volver a presionar. No hace falta resistencia: se usa la *pull-up* interna de la Raspberry.
+> En `config.json`: `"segundos_cuenta_regresiva"` cambia los 5 s, `"pin_boton_gpio"` el pin, y `"modo_captura": "continuo"` vuelve al modo sin botón (la cámara busca rostros todo el tiempo).
 
 > **Nota para la cerradura:** El relevador se conecta como interruptor entre la fuente de 12V de la cerradura y la misma cerradura. La Raspberry Pi no alimenta directamente la cerradura electromagnética de 12V; solo conmuta el relé.
 
