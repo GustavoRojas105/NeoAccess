@@ -61,7 +61,12 @@ CONFIG_EXTRA = [
     "/boot/firmware/neoaccess_config.json", "/boot/neoaccess_config.json",
     "/boot/firmware/config.json.neoaccess", "/boot/config.json.neoaccess",
 ]
-RETRY_OFFLINE_SEG = 15  # mientras no haya servidor, reintentar seguido
+RETRY_OFFLINE_SEG = 15
+
+# Tonos del buzzer: (segundos sonando, segundos en silencio).
+# Un buzzer activo tiene una sola nota, así que el "tono" se da con el ritmo.
+TONO_PERMITIDO = [(0.06, 0.05), (0.06, 0.05), (0.06, 0.05), (0.25, 0)]  # bi-bi-bi-biiip: alegre, sube
+TONO_DENEGADO = [(0.45, 0.15), (0.9, 0)]                              # buuuu... buuuuuuu: triste, baja  # mientras no haya servidor, reintentar seguido
 
 
 def _importar_config_externo():
@@ -241,6 +246,19 @@ class NeoAccessRaspberryNode:
         """Enciende o apaga el buzzer respetando si el módulo es activo en bajo."""
         if HARDWARE_GPIO_AVAILABLE:
             GPIO.output(self.pin_buzzer, GPIO.LOW if sonar == self.buzzer_activo_bajo else GPIO.HIGH)
+
+    def sonar(self, patron):
+        """Reproduce un patrón [(segundos sonando, segundos en silencio), ...]."""
+        if not HARDWARE_GPIO_AVAILABLE:
+            return
+        try:
+            for encendido, apagado in patron:
+                self._buzzer(True)
+                time.sleep(encendido)
+                self._buzzer(False)
+                time.sleep(apagado)
+        finally:
+            self._buzzer(False)
 
     def setup_gpio(self):
         """Configuración física de pines GPIO de la Raspberry Pi Zero W."""
@@ -524,9 +542,7 @@ class NeoAccessRaspberryNode:
                 try:
                     GPIO.output(self.pin_cerradura, GPIO.HIGH)
                     GPIO.output(self.pin_led_verde, GPIO.HIGH)
-                    self._buzzer(True)
-                    time.sleep(0.3)
-                    self._buzzer(False)
+                    self.sonar(TONO_PERMITIDO)
                     time.sleep(self.open_seconds)
                 finally:
                     # Pase lo que pase, la cerradura vuelve a bloquearse
@@ -542,10 +558,12 @@ class NeoAccessRaspberryNode:
             print("\n[CERRADURA] -- ACCESO DENEGADO. La puerta permanece BLOQUEADA.\n")
             if HARDWARE_GPIO_AVAILABLE:
                 GPIO.output(self.pin_led_rojo, GPIO.HIGH)
-                self._buzzer(True)
-                time.sleep(0.8)
-                GPIO.output(self.pin_led_rojo, GPIO.LOW)
-                self._buzzer(False)
+                try:
+                    self.sonar(TONO_DENEGADO)
+                    time.sleep(0.3)
+                finally:
+                    GPIO.output(self.pin_led_rojo, GPIO.LOW)
+                    self._buzzer(False)
 
     # -------------------------------------------------------------
     # PROCESAMIENTO DE ACCESO CON PRIVACIDAD (RF-07)
