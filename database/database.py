@@ -105,6 +105,8 @@ def init_db():
     if "cuenta_aprobada" not in columns:
         cursor.execute("ALTER TABLE usuarios ADD COLUMN cuenta_aprobada INTEGER DEFAULT 1;")
     cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_correo ON usuarios (correo) WHERE correo IS NOT NULL;")
+    if "debe_cambiar_password" not in columns:
+        cursor.execute("ALTER TABLE usuarios ADD COLUMN debe_cambiar_password INTEGER NOT NULL DEFAULT 0;")
 
     # Configuración global del sistema (p. ej. modo mantenimiento)
     cursor.execute("""
@@ -272,6 +274,12 @@ def init_db():
     );
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_inscripciones_usuario ON inscripciones (usuario_id);")
+
+    # 13a. Contraseña temporal puesta por el administrador: se pide cambiarla al entrar
+    for tabla in ("administradores", "jefes_carrera"):
+        cols = [c[1] for c in cursor.execute(f"PRAGMA table_info({tabla});").fetchall()]
+        if cols and "debe_cambiar_password" not in cols:
+            cursor.execute(f"ALTER TABLE {tabla} ADD COLUMN debe_cambiar_password INTEGER NOT NULL DEFAULT 0;")
 
     # 13b. Alumnos inscritos a clases fuera de su grupo (carga académica del SEIT o agregados por el docente)
     cursor.execute("""

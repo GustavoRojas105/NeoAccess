@@ -58,6 +58,7 @@ function pintarCuentas(tipo) {
         </div>
         <div class="flex gap-2 shrink-0">
           <button onclick="abrirModalCuenta(${escJsArg(tipo)}, ${escJsArg(u.id)})" class="px-3 py-1.5 text-[11px] font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50">Editar</button>
+          ${botonRestablecer("usuario", u.id, u.nombre_completo)}
           <button onclick="toggleCuenta(${escJsArg(tipo)}, ${escJsArg(u.id)})" class="px-3 py-1.5 text-[11px] font-semibold rounded-lg ${activo ? "border border-red-200 text-red-700 hover:bg-red-50" : "bg-emerald-600 text-white hover:bg-emerald-700"}">${activo ? "Dar de baja" : "Reactivar"}</button>
         </div>
       </div>`;
@@ -142,6 +143,31 @@ function verPasswordCuenta(btn, ocultar = false) {
   btn.setAttribute("aria-label", texto);
   btn.innerHTML = `<i data-lucide="${mostrar ? "eye-off" : "eye"}" class="w-4 h-4"></i>`;
   if (window.lucide) lucide.createIcons();
+}
+
+// ── Restablecer contraseña (solo administrador) ──
+function botonRestablecer(tipo, id, nombre) {
+  if (!STATE.user || STATE.user.rol !== "administrador") return "";
+  return `<button onclick="restablecerPassword(${escJsArg(tipo)}, ${escJsArg(String(id))}, ${escJsArg(nombre || "")})"
+    title="Le da una contraseña temporal y al entrar se le pide cambiarla"
+    class="px-3 py-1.5 text-[11px] font-semibold rounded-lg border border-amber-300 text-amber-800 hover:bg-amber-50">Restablecer contraseña</button>`;
+}
+
+async function restablecerPassword(tipo, id, nombre) {
+  const ok = await showConfirm(
+    `¿Restablecer la contraseña de ${nombre}?\n\nSe le asignará una contraseña temporal y se cerrarán sus sesiones abiertas. ` +
+    `Cuando entre con ella, el sistema le pedirá crear una nueva.`,
+    { title: "Restablecer contraseña", confirmText: "Restablecer" });
+  if (!ok) return;
+  try {
+    const r = await apiFetch(`/api/accounts/${encodeURIComponent(tipo)}/${encodeURIComponent(id)}/reset-password`, { method: "POST" });
+    await showAlert(
+      `Contraseña temporal de ${r.nombre}:\n\n${r.temporal}\n\n` +
+      `Dásela en persona (no se vuelve a mostrar). Al entrar con ella se le pedirá crear una nueva.`,
+      { type: "success", title: "Contraseña restablecida" });
+  } catch (err) {
+    showAlert("No se pudo restablecer: " + err.message, { type: "error" });
+  }
 }
 
 async function toggleCuenta(tipo, userId) {

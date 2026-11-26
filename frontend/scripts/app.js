@@ -48,6 +48,13 @@ async function apiFetch(endpoint, options = {}) {
     logoutUser();
     throw new Error("Sesión no autorizada o expirada");
   }
+  if (res.status === 403 && res.headers.get("X-NeoAccess-Cambiar-Password")) {
+    const u = JSON.parse(localStorage.getItem("neoaccess_user") || "{}");
+    u.debe_cambiar_password = true;
+    localStorage.setItem("neoaccess_user", JSON.stringify(u));
+    window.location.replace("/login");
+    throw new Error("Debes cambiar tu contraseña temporal.");
+  }
   if (res.status === 503 && res.headers.get("X-NeoAccess-Mantenimiento")) {
     const data = await res.json().catch(() => ({}));
     showMaintenanceScreen(data.detail);

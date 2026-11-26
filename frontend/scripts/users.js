@@ -58,6 +58,7 @@ function renderStudentsCards(students) {
             class="py-2 px-3 bg-slate-100 text-slate-700 rounded-lg border border-slate-300" title="Ver detalle">
             <i data-lucide="eye" class="w-4 h-4"></i>
           </button>
+          ${iconoRestablecer(u, "py-2 px-3 bg-amber-50 text-amber-700 rounded-lg border border-amber-200")}
           ${isActivo ? `
           <button onclick="toggleUserStatus(${escJsArg(u.id)})"
             class="py-2 px-3 bg-slate-100 text-slate-500 rounded-lg border border-slate-300" title="Dar de baja">
@@ -127,6 +128,7 @@ function renderStudentsTable(students) {
             class="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition" title="Ver Detalle e Historial de Accesos">
             <i data-lucide="eye" class="w-4 h-4"></i>
           </button>
+          ${iconoRestablecer(u)}
 
           ${isActivo ? `
           <button onclick="toggleUserStatus(${escJsArg(u.id)})"
@@ -617,10 +619,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 // ─────────────── Baja / reactivar / eliminar definitivamente ───────────────
+// Llave: contraseña temporal que se pide cambiar al entrar (solo administrador; ver cuentas.js)
+function iconoRestablecer(u, clases) {
+  if (esJefe() || typeof restablecerPassword !== "function") return "";
+  return `<button onclick="restablecerPassword('usuario', ${escJsArg(u.id)}, ${escJsArg(u.nombre_completo)})"
+    class="${clases || "p-1.5 text-slate-400 hover:text-amber-700 hover:bg-amber-50 rounded transition"}"
+    title="Restablecer contraseña (temporal; se le pide cambiarla al entrar)"><i data-lucide="key-round" class="w-4 h-4"></i></button>`;
+}
+
 function staffStatusButtons(u) {
-  const baja = u.estado === "activo"
+  const baja = iconoRestablecer(u) + (u.estado === "activo"
     ? `<button onclick="toggleUserStatus(${escJsArg(u.id)})" class="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-slate-100 rounded transition" title="Dar de baja (bloquea el acceso, conserva el registro)"><i data-lucide="user-x" class="w-4 h-4"></i></button>`
-    : `<button onclick="reactivateUser(${escJsArg(u.id)})" class="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded transition" title="Reactivar"><i data-lucide="user-check" class="w-4 h-4"></i></button>`;
+    : `<button onclick="reactivateUser(${escJsArg(u.id)})" class="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded transition" title="Reactivar"><i data-lucide="user-check" class="w-4 h-4"></i></button>`);
   if (esJefe()) return baja;   // el jefe solo da de baja: el registro queda en el histórico
   return baja + `<button onclick="deleteUserPermanent(${escJsArg(u.id)}, ${escJsArg(u.nombre_completo)})" class="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition" title="Eliminar definitivamente"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`;
 }

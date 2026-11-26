@@ -480,6 +480,74 @@ class TestEntrarConCorreoYEspacios(Base):
             poner_clave("AL-1")
 
 
+class TestRestablecerPassword(Base):
+    """El administrador da una contraseña temporal; al entrar se obliga a cambiarla."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        C.post("/api/users", headers=cls.A, json={"id": "AL-RST", "nombre_completo": "Alumno Restablecer",
+                                                  "matricula_clave": "230119999", "tipo": "alumno", "carrera": ISC,
+                                                  "grupo_id": "ISC-501", "estado": "activo", "password": CLAVE_PRUEBA})
+        C.post("/api/jefes", headers=cls.A, json={"username": "jefe.rst", "nombre": "Jefe Restablecer",
+                                                  "password": CLAVE_PRUEBA, "carreras": [ISC]})
+
+    def login(self, u, p):
+        limpiar_intentos()
+        return C.post("/api/auth/login", json={"username": u, "password": p})
+
+    def reset(self, tipo, cid, H=None):
+        return C.post(f"/api/accounts/{tipo}/{cid}/reset-password", headers=H or self.A)
+
+    def test_alumno_cambia_la_temporal_al_entrar(self):
+        viejo = {"Authorization": "Bearer " + self.login("230119999", CLAVE_PRUEBA).json()["token"]}
+        r = self.reset("usuario", "AL-RST")
+        self.assertEqual(r.status_code, 200, r.text)
+        temporal = r.json()["temporal"]
+        self.assertEqual(len(temporal), 10)
+        self.assertEqual(C.get("/api/portal/student-data", headers=viejo).status_code, 401)   # sesión vieja cerrada
+        self.assertEqual(self.login("230119999", CLAVE_PRUEBA).status_code, 401)              # la anterior ya no sirve
+        e = self.login("230119999", temporal)
+        self.assertEqual(e.status_code, 200, e.text)
+        self.assertTrue(e.json()["admin"]["debe_cambiar_password"])
+        H = {"Authorization": "Bearer " + e.json()["token"]}
+        bloqueado = C.get("/api/portal/student-data", headers=H)
+        self.assertEqual(bloqueado.status_code, 403)
+        self.assertEqual(bloqueado.headers.get("X-NeoAccess-Cambiar-Password"), "1")
+        self.assertEqual(C.post("/api/auth/required-password", headers=H, json={"nueva": temporal}).status_code, 400)
+        self.assertEqual(C.post("/api/auth/required-password", headers=H, json={"nueva": "corta"}).status_code, 422)
+        self.assertEqual(C.post("/api/auth/required-password", headers=H, json={"nueva": "MiNueva2026"}).status_code, 200)
+        self.assertEqual(C.get("/api/portal/student-data", headers=H).status_code, 200)         # sigue con la misma sesión
+        e2 = self.login("230119999", "MiNueva2026")
+        self.assertEqual(e2.status_code, 200)
+        self.assertFalse(e2.json()["admin"]["debe_cambiar_password"])
+
+    def test_jefe_y_otro_admin(self):
+        from _entorno import bd
+        c = bd()
+        jid = c.execute("SELECT id FROM jefes_carrera WHERE username = 'jefe.rst'").fetchone()[0]
+        c.close()
+        r = self.reset("jefe", jid)
+        self.assertEqual(r.status_code, 200, r.text)
+        e = self.login("jefe.rst", r.json()["temporal"])
+        self.assertTrue(e.json()["admin"]["debe_cambiar_password"])
+        H = {"Authorization": "Bearer " + e.json()["token"]}
+        self.assertEqual(C.get("/api/groups", headers=H).status_code, 403)
+        self.assertEqual(C.post("/api/auth/required-password", headers=H, json={"nueva": "JefeNueva2026"}).status_code, 200)
+        self.assertEqual(C.get("/api/groups", headers=H).status_code, 200)
+        # su propia cuenta no (usa «Cambiar mi contraseña»)
+        yo = [a for a in C.get("/api/admins", headers=self.A).json() if a.get("es_yo")][0]
+        self.assertEqual(self.reset("admin", yo["id"]).status_code, 400)
+
+    def test_solo_el_administrador(self):
+        self.assertEqual(self.reset("usuario", "AL-RST", H=self.J).status_code, 403)
+        self.assertEqual(self.reset("usuario", "AL-RST", H=self.DO).status_code, 403)
+        self.assertEqual(self.reset("otro", "AL-RST").status_code, 400)
+        self.assertEqual(self.reset("usuario", "NO-EXISTE").status_code, 404)
+        self.assertEqual(self.reset("jefe", "abc").status_code, 404)
+        self.assertEqual(C.post("/api/auth/required-password", json={"nueva": "LoQueSea2026"}).status_code, 401)
+
+
 class TestCargaYClasesExtra(Base):
     """Carga académica del SEIT y alumnos agregados por el docente a una clase de otro grupo."""
     FECHA = "2026-11-28"   # sábado

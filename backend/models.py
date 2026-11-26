@@ -10,6 +10,10 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
+class NuevaPasswordRequest(BaseModel):
+    """Contraseña nueva al entrar con una temporal."""
+    nueva: str = Field(..., min_length=8, max_length=128)
+
 class CargaAcademicaRequest(BaseModel):
     """Texto copiado de la «Carga Académica del Alumno» del SEIT."""
     texto: str = Field(..., min_length=20, max_length=20000)

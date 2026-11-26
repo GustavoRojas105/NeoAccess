@@ -24,9 +24,10 @@ function adminEstadoBadge(a) {
 
 function adminAccion(a) {
   if (a.es_yo) return `<span class="text-[10px] text-slate-400 font-semibold">Tu cuenta</span>`;
-  return a.activo
+  const reset = typeof botonRestablecer === "function" ? botonRestablecer("admin", a.id, a.nombre) : "";
+  return `<span class="inline-flex flex-wrap gap-1.5 justify-end">${reset}` + (a.activo
     ? `<button onclick="toggleAdmin(${a.id}, ${a.activo}, '${esc(a.username)}')" class="px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border border-red-200 text-red-600 hover:bg-red-50">Desactivar</button>`
-    : `<button onclick="toggleAdmin(${a.id}, ${a.activo}, '${esc(a.username)}')" class="px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border border-emerald-200 text-emerald-700 hover:bg-emerald-50">Reactivar</button>`;
+    : `<button onclick="toggleAdmin(${a.id}, ${a.activo}, '${esc(a.username)}')" class="px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border border-emerald-200 text-emerald-700 hover:bg-emerald-50">Reactivar</button>`) + `</span>`;
 }
 
 function renderAdmins(admins) {

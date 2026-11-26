@@ -135,6 +135,7 @@ async function loadJefesData() {
         </div>
         <div class="flex gap-2 shrink-0">
           <button onclick='editarCarrerasJefe(${JSON.stringify({ id: j.id, nombre: j.nombre, carreras: j.carreras }).replace(/'/g, "&#39;")})' class="px-3 py-1.5 text-[11px] font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50">Carreras</button>
+          ${typeof botonRestablecer === "function" ? botonRestablecer("jefe", j.id, j.nombre) : ""}
           <button onclick="toggleJefe(${Number(j.id)}, ${j.activo ? 1 : 0}, ${escJsArg(j.username)})" class="px-3 py-1.5 text-[11px] font-semibold rounded-lg ${j.activo ? "border border-red-200 text-red-700 hover:bg-red-50" : "bg-emerald-600 text-white hover:bg-emerald-700"}">${j.activo ? "Desactivar" : "Reactivar"}</button>
         </div>
       </div>`).join("")

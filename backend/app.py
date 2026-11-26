@@ -34,7 +34,7 @@ from backend.auth import (
     login_locked_seconds, register_failed_login, reset_failed_logins
 )
 from backend.models import (
-    LoginRequest, GoogleLoginRequest, CargaAcademicaRequest, InscribirAlumnoRequest, RegisterRequest, AdminCreate, PasswordChange, JefeCreate, JefeCarreras, GroupUpdate, ResendVerificationRequest, VerifyCodeRequest, PasswordResetRequest, MaintenancePayload, LabCreate, LabUpdate, DeviceCreate, GroupCreate,
+    LoginRequest, GoogleLoginRequest, NuevaPasswordRequest, CargaAcademicaRequest, InscribirAlumnoRequest, RegisterRequest, AdminCreate, PasswordChange, JefeCreate, JefeCarreras, GroupUpdate, ResendVerificationRequest, VerifyCodeRequest, PasswordResetRequest, MaintenancePayload, LabCreate, LabUpdate, DeviceCreate, GroupCreate,
     UserCreate, FacialMetadataCreate, FacialCapturePayload, ScheduleCreate,
     HeartbeatPayload, AccessAttemptPayload, CleaningPayload, CommandAckPayload
 )
@@ -111,6 +111,9 @@ def get_current_user(authorization: Optional[str] = Header(None)):
     session = validate_session(token)
     if not session:
         raise HTTPException(status_code=401, detail="Sesión expirada o token inválido.")
+    if session.get("debe_cambiar_password"):
+        raise HTTPException(status_code=403, detail="Debes cambiar tu contraseña temporal antes de continuar.",
+                            headers={"X-NeoAccess-Cambiar-Password": "1"})
     if session.get("rol") != "administrador":
         state = get_maintenance_state()
         if state["activo"]:
@@ -219,19 +222,8 @@ def login(payload: LoginRequest, request: Request):
                            (hash_password(payload.password), admin["id"]))
             conn.commit()
         reset_failed_logins(client_ip, payload.username)
-        token = create_session(admin["username"], admin["id"], admin["nombre"], rol="administrador", extra_data={"email": admin["email"]})
         conn.close()
-        return {
-            "success": True,
-            "token": token,
-            "admin": {
-                "id": admin["id"],
-                "username": admin["username"],
-                "nombre": admin["nombre"],
-                "email": admin["email"],
-                "rol": "administrador"
-            }
-        }
+        return _sesion_admin(admin)
 
     # 2. Intentar como Jefe de Carrera
     cursor.execute("SELECT * FROM jefes_carrera WHERE (lower(username) = lower(?) OR lower(email) = lower(?)) AND activo = 1",
@@ -272,12 +264,17 @@ def login(payload: LoginRequest, request: Request):
     register_failed_login(client_ip, payload.username)
     raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos.")
 
+def _debe_cambiar(fila) -> bool:
+    return "debe_cambiar_password" in fila.keys() and bool(fila["debe_cambiar_password"])
+
+
 def _sesion_admin(admin) -> dict:
+    cambiar = _debe_cambiar(admin)
     token = create_session(admin["username"], admin["id"], admin["nombre"], rol="administrador",
-                           extra_data={"email": admin["email"]})
+                           extra_data={"email": admin["email"], "debe_cambiar_password": cambiar})
     return {"success": True, "token": token, "admin": {
         "id": admin["id"], "username": admin["username"], "nombre": admin["nombre"],
-        "email": admin["email"], "rol": "administrador"}}
+        "email": admin["email"], "rol": "administrador", "debe_cambiar_password": cambiar}}
 
 
 def _sesion_jefe(cursor, jefe) -> dict:
@@ -286,11 +283,12 @@ def _sesion_jefe(cursor, jefe) -> dict:
         raise maintenance_exception(state)
     carreras = [r["carrera"] for r in cursor.execute(
         "SELECT carrera FROM jefe_carreras WHERE jefe_id = ? ORDER BY carrera", (jefe["id"],))]
+    cambiar = _debe_cambiar(jefe)
     token = create_session(jefe["username"], jefe["id"], jefe["nombre"], rol="jefe_carrera",
-                           extra_data={"email": jefe["email"], "carreras": carreras})
+                           extra_data={"email": jefe["email"], "carreras": carreras, "debe_cambiar_password": cambiar})
     return {"success": True, "token": token, "admin": {
         "id": jefe["id"], "username": jefe["username"], "nombre": jefe["nombre"],
-        "email": jefe["email"], "rol": "jefe_carrera", "carreras": carreras}}
+        "email": jefe["email"], "rol": "jefe_carrera", "carreras": carreras, "debe_cambiar_password": cambiar}}
 
 
 def _sesion_usuario(user) -> dict:
@@ -312,7 +310,8 @@ def _sesion_usuario(user) -> dict:
             "matricula_clave": user["matricula_clave"],
             "carrera": user["carrera"],
             "grupo_id": user["grupo_id"],
-            "grupo_nombre": user["grupo_nombre"]
+            "grupo_nombre": user["grupo_nombre"],
+            "debe_cambiar_password": _debe_cambiar(user),
         }
     )
     return {
@@ -326,7 +325,8 @@ def _sesion_usuario(user) -> dict:
             "carrera": user["carrera"],
             "grupo_id": user["grupo_id"],
             "grupo_nombre": user["grupo_nombre"],
-            "rol": user["tipo"]
+            "rol": user["tipo"],
+            "debe_cambiar_password": _debe_cambiar(user),
         }
     }
 
@@ -398,6 +398,86 @@ def login_google(payload: GoogleLoginRequest):
         conn.close()
     raise HTTPException(status_code=404,
                         detail=f"{correo} todavía no tiene cuenta en NeoAccess. Créala en «Crear cuenta».")
+
+
+# -------------------------------------------------------------
+# RESTABLECER CONTRASEÑA (administrador) Y CAMBIO OBLIGATORIO AL ENTRAR
+# -------------------------------------------------------------
+_CUENTAS_RESET = {"usuario": "usuarios", "jefe": "jefes_carrera", "admin": "administradores"}
+_ALFABETO_TEMPORAL = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"
+
+
+def _password_temporal() -> str:
+    """10 caracteres sin los que se confunden (0/O, 1/l/I), con letras y números."""
+    while True:
+        pw = "".join(secrets.choice(_ALFABETO_TEMPORAL) for _ in range(10))
+        if any(c.isdigit() for c in pw) and any(c.isupper() for c in pw) and any(c.islower() for c in pw):
+            return pw
+
+
+def _tabla_y_rol(cursor, tipo: str, cuenta_id: str):
+    tabla = _CUENTAS_RESET.get(tipo)
+    if not tabla:
+        raise HTTPException(status_code=400, detail="Tipo de cuenta inválido (usuario, jefe o admin).")
+    if tipo == "usuario":
+        fila = cursor.execute("SELECT id, nombre_completo AS nombre, tipo FROM usuarios WHERE id = ?", (cuenta_id,)).fetchone()
+        return tabla, fila, (fila["tipo"] if fila else None), cuenta_id
+    try:
+        cid = int(cuenta_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Cuenta no encontrada.")
+    fila = cursor.execute(f"SELECT id, nombre FROM {tabla} WHERE id = ?", (cid,)).fetchone()
+    return tabla, fila, ("jefe_carrera" if tipo == "jefe" else "administrador"), cid
+
+
+@app.post("/api/accounts/{tipo}/{cuenta_id}/reset-password")
+def restablecer_password(tipo: str, cuenta_id: str, admin: dict = Depends(get_current_admin)):
+    """El administrador pone una contraseña temporal; la persona debe cambiarla al entrar."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        tabla, fila, rol, cid = _tabla_y_rol(cursor, tipo, cuenta_id)
+        if not fila:
+            raise HTTPException(status_code=404, detail="Cuenta no encontrada.")
+        if rol == "administrador" and cid == admin.get("user_id"):
+            raise HTTPException(status_code=400, detail="Para tu propia cuenta usa «Cambiar mi contraseña».")
+        temporal = _password_temporal()
+        cursor.execute(f"UPDATE {tabla} SET password_hash = ?, debe_cambiar_password = 1 WHERE id = ?",
+                       (hash_password(temporal), cid))
+        conn.commit()
+    finally:
+        conn.close()
+    destroy_sessions_for(rol, cid)   # sale de donde la tuviera abierta
+    return {"success": True, "temporal": temporal, "nombre": fila["nombre"],
+            "message": f"Contraseña temporal de {fila['nombre']}: {temporal}. "
+                       "Al entrar con ella, el sistema le pedirá crear una nueva."}
+
+
+@app.post("/api/auth/required-password")
+def cambiar_password_temporal(payload: NuevaPasswordRequest, authorization: Optional[str] = Header(None)):
+    """Cambia la contraseña temporal. Es lo único que se puede hacer con ella."""
+    token = (authorization or "").replace("Bearer ", "").strip()
+    session = validate_session(token) if token else None
+    if not session:
+        raise HTTPException(status_code=401, detail="Sesión expirada. Vuelve a iniciar sesión.")
+    rol = session.get("rol")
+    tabla = {"administrador": "administradores", "jefe_carrera": "jefes_carrera"}.get(rol, "usuarios")
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        fila = cursor.execute(f"SELECT password_hash FROM {tabla} WHERE id = ?", (session.get("user_id"),)).fetchone()
+        if not fila:
+            raise HTTPException(status_code=404, detail="Cuenta no encontrada.")
+        if fila["password_hash"] and verify_password(payload.nueva, fila["password_hash"]):
+            raise HTTPException(status_code=400, detail="La nueva contraseña debe ser distinta a la temporal.")
+        cursor.execute(f"UPDATE {tabla} SET password_hash = ?, debe_cambiar_password = 0 WHERE id = ?",
+                       (hash_password(payload.nueva), session.get("user_id")))
+        conn.commit()
+    finally:
+        conn.close()
+    destroy_sessions_for(rol, session.get("user_id"), except_token=token)
+    session["debe_cambiar_password"] = False
+    return {"success": True, "message": "✓ Contraseña actualizada."}
 
 
 @app.post("/api/auth/logout")
@@ -767,14 +847,14 @@ def reset_password(payload: PasswordResetRequest):
 
         nuevo = hash_password(payload.password)
         if rec["cuenta_tipo"] == "jefe":
-            cursor.execute("UPDATE jefes_carrera SET password_hash = ? WHERE id = ?", (nuevo, rec["cuenta_id"]))
+            cursor.execute("UPDATE jefes_carrera SET password_hash = ?, debe_cambiar_password = 0 WHERE id = ?", (nuevo, rec["cuenta_id"]))
             rol, uid = "jefe_carrera", rec["cuenta_id"]
             try:
                 uid = int(uid)
             except ValueError:
                 pass
         else:
-            cursor.execute("UPDATE usuarios SET password_hash = ? WHERE id = ?", (nuevo, rec["cuenta_id"]))
+            cursor.execute("UPDATE usuarios SET password_hash = ?, debe_cambiar_password = 0 WHERE id = ?", (nuevo, rec["cuenta_id"]))
             fila = cursor.execute("SELECT tipo FROM usuarios WHERE id = ?", (rec["cuenta_id"],)).fetchone()
             rol, uid = (fila["tipo"] if fila else None), rec["cuenta_id"]
         cursor.execute("DELETE FROM recuperaciones_password WHERE correo = ?", (correo,))
