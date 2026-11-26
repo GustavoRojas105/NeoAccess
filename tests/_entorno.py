@@ -16,9 +16,31 @@ sys.path.insert(0, RAIZ)
 import database.database as dbm  # noqa: E402
 
 BD_REAL = os.path.join(RAIZ, "database", "neoaccess.db")
+# Lo que una puerta real conectada cambia sola mientras corren las pruebas (latido cada
+# minuto): no cuenta como "las pruebas tocaron la BD real".
+_CAMBIOS_EN_VIVO = {"dispositivos": ("ultima_senal", "ip_address", "estado"),
+                    "eventos_dispositivo": None}
+
+
 def _huella(ruta):
-    with open(ruta, "rb") as f:
-        return hashlib.sha256(f.read()).hexdigest()
+    """Huella del contenido de la BD real, sin lo que cambian las puertas en vivo."""
+    import sqlite3
+    h = hashlib.sha256()
+    c = sqlite3.connect(f"file:{ruta}?mode=ro", uri=True)
+    try:
+        tablas = [r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+        for t in tablas:
+            if t in _CAMBIOS_EN_VIVO and _CAMBIOS_EN_VIVO[t] is None:
+                continue
+            cols = [r[1] for r in c.execute(f'PRAGMA table_info("{t}")')
+                    if r[1] not in (_CAMBIOS_EN_VIVO.get(t) or ())]
+            lista = ", ".join(f'"{x}"' for x in cols)
+            h.update(t.encode())
+            for fila in c.execute(f'SELECT {lista} FROM "{t}" ORDER BY rowid'):
+                h.update(repr(fila).encode())
+    finally:
+        c.close()
+    return h.hexdigest()
 
 
 HUELLA_BD_REAL = _huella(BD_REAL) if os.path.exists(BD_REAL) else None
@@ -114,5 +136,4 @@ def periodo_activo_id():
 def bd_real_intacta():
     if HUELLA_BD_REAL is None:
         return True
-    with open(BD_REAL, "rb") as f:
-        return hashlib.sha256(f.read()).hexdigest() == HUELLA_BD_REAL
+    return _huella(BD_REAL) == HUELLA_BD_REAL

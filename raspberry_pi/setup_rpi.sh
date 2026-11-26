@@ -48,6 +48,7 @@ Type=simple
 User=${CURRENT_USER}
 WorkingDirectory=${CURRENT_DIR}
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONIOENCODING=utf-8
 ExecStart=/usr/bin/python3 ${CURRENT_DIR}/rpi_main.py
 Restart=always
 RestartSec=5

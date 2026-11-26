@@ -18,6 +18,14 @@ import threading
 from datetime import datetime, timedelta
 import requests
 
+# Si la Raspberry tiene un idioma sin UTF-8 (p. ej. LANG=es_MX), print() con acentos o
+# símbolos como • tumbaría el programa: forzar UTF-8 en la salida.
+for _salida in (sys.stdout, sys.stderr):
+    try:
+        _salida.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 from face_engine import (
     FaceEngine, FaceEngineUnavailable, VectorIndex,
     DEFAULT_COSINE_THRESHOLD, OPENCV_AVAILABLE
@@ -239,11 +247,21 @@ class NeoAccessRaspberryNode:
             print(f"[GPIO OK] Relevador de cerradura configurado en GPIO {self.pin_cerradura}.")
             if self.capture_mode == "boton":
                 # Botón entre el GPIO y GND: resistencia pull-up interna, se lee LOW al presionar
-                GPIO.setup(self.pin_boton, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-                GPIO.add_event_detect(self.pin_boton, GPIO.FALLING,
-                                      callback=lambda _canal: self.boton_presionado.set(),
-                                      bouncetime=300)
-                print(f"[GPIO OK] Botón de verificación en GPIO {self.pin_boton}.")
+                try:
+                    GPIO.setup(self.pin_boton, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+                except Exception as e:
+                    print(f"[BOTÓN] No se pudo configurar GPIO {self.pin_boton}: {e}")
+                    return
+                try:
+                    GPIO.add_event_detect(self.pin_boton, GPIO.FALLING,
+                                          callback=lambda _canal: self.boton_presionado.set(),
+                                          bouncetime=300)
+                    print(f"[GPIO OK] Botón de verificación en GPIO {self.pin_boton}.")
+                except Exception:
+                    # Kernels nuevos (6.x) a veces no permiten la detección por interrupción:
+                    # se lee el pin cada 20 ms, que funciona en cualquier versión.
+                    threading.Thread(target=self._sondear_boton, daemon=True).start()
+                    print(f"[GPIO OK] Botón de verificación en GPIO {self.pin_boton} (lectura continua).")
         else:
             print("[INFO] GPIO físico no disponible. Ejecutando en modo consola simulada.")
 
@@ -598,6 +616,20 @@ class NeoAccessRaspberryNode:
     # -------------------------------------------------------------
     # MODO BOTÓN: presionar -> cuenta regresiva -> foto -> verificación
     # -------------------------------------------------------------
+    def _sondear_boton(self):
+        """Detecta la pulsación leyendo el pin (HIGH en reposo, LOW al presionar)."""
+        anterior = 1
+        while self.running:
+            try:
+                actual = GPIO.input(self.pin_boton)
+            except Exception:
+                return
+            if anterior == 1 and actual == 0:
+                self.boton_presionado.set()
+                time.sleep(0.3)  # antirrebote
+            anterior = actual
+            time.sleep(0.02)
+
     def start_keyboard_button(self):
         """Sin GPIO (pruebas en PC): la tecla Enter hace de botón."""
         if HARDWARE_GPIO_AVAILABLE or not sys.stdin or not sys.stdin.isatty():
