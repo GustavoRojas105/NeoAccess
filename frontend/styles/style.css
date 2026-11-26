@@ -103,6 +103,14 @@ body {
   backdrop-filter: blur(2px);
 }
 
+/* Ninguna ventana debe salirse de la pantalla: si no cabe, se desplaza por dentro */
+.modal-overlay > div {
+  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 /* ── Highlight de fila nueva en la tabla de accesos recientes ── */
 @keyframes newRowFlash {
   0%   { background-color: #fef9c3; }   /* amarillo tenue */

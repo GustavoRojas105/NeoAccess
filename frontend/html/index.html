@@ -10,7 +10,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
-  <link rel="stylesheet" href="/styles/style.css?v=20261124_11">
+  <link rel="stylesheet" href="/styles/style.css?v=20261125_1">
   <script>
     // Si no hay sesión activa, limpiar DOM, pintar negro y redirigir al login puro
     if (!localStorage.getItem("neoaccess_token") || !localStorage.getItem("neoaccess_user")) {
@@ -1134,8 +1134,8 @@
 
   <!-- ================= MODAL: CONECTAR RASPBERRY PI ZERO W ================= -->
   <div id="modal-connect-rpi" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay p-4 hidden">
-    <div class="bg-white rounded-xl shadow-2xl max-w-xl w-full p-6 border border-slate-200 space-y-4">
-      <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+    <div class="bg-white rounded-xl shadow-2xl max-w-xl w-full p-6 pt-0 border border-slate-200 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-200 pb-3 pt-6 sticky top-0 bg-white z-10">
         <div class="flex items-center gap-2">
           <div class="p-2 bg-slate-100 rounded-lg text-slate-800">
             <i data-lucide="cpu" class="w-5 h-5"></i>
