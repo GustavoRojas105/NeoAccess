@@ -17,10 +17,10 @@ Cada tipo corre en un proceso aparte con una **base de datos temporal nueva**. L
 | Tipo | Archivo | Pruebas | Resultado |
 |---|---|---|---|
 | Caja blanca | `test_caja_blanca.py` | 43 | ✅ 43 pasan |
-| Caja negra (API) | `test_caja_negra.py` | 58 | ✅ 58 pasan |
+| Caja negra (API) | `test_caja_negra.py` | 59 | ✅ 59 pasan |
 | Caja gris | `test_caja_gris.py` | 19 | ✅ 19 pasan |
 | Caja negra (interfaz) | navegador, manual asistida | 9 escenarios | ✅ todos correctos |
-| **Total automatizadas** | | **120** | **✅ 120 pasan** |
+| **Total automatizadas** | | **121** | **✅ 121 pasan** |
 
 Muchas pruebas usan `subTest` con tablas de casos. En total se revisan **más de 200 combinaciones** de entrada.
 
@@ -82,6 +82,7 @@ Se recorren las ramas de cada función interna:
 - **Códigos por correo** (correo simulado): solo `@itsoeh.edu.mx`; registro con código de 6 dígitos (ya no enlace); 5 intentos y el código queda inválido; reenviar da uno nuevo; código vencido; docente queda pendiente; recuperar contraseña con respuesta igual exista o no la cuenta, mínimo 8 caracteres, código de un solo uso y cierre de sesiones abiertas.
 - **Pase de lista del docente**: Excel con la hora de entrada y "Presente", PDF de una clase, día sin clases (404), fecha mal escrita (400), formato inválido (422); alumno y administrador no pueden bajarlo y un docente no puede bajar la clase de otro.
 - **Login con Google** (Google simulado): entra la cuenta existente sin importar mayúsculas; se rechaza Gmail, otro dominio, otro ID de cliente, correo sin verificar y token vencido; un correo sin cuenta pide registrarse; sin ID de cliente el botón no aparece.
+- **Formas de entrar**: con la matrícula, con el ID o con el correo institucional (sin importar mayúsculas ni espacios alrededor); la contraseña se compara tal cual y, si el celular agrega un espacio al final, también entra; una contraseña distinta se rechaza.
 - **Nombres y matrículas**: los nombres se guardan en MAYÚSCULAS y sin espacios dobles; se rechazan nombres con números o símbolos; la matrícula de alumno solo acepta 8 o 9 números (19011044, 230110427) el docente usa su número de empleado de RH (3 a 10 números; los que ya tenían clave de letras la conservan al editarlos) y el personal de limpieza una clave de 3 a 20 letras, números o guiones; aplica al registro, a las cuentas del administrador y a los jefes de carrera.
 - Importación: al revisar no se guarda nada, y al reimportar no se duplica.
 - Reportes con caracteres especiales (`%`, `_`, `' OR 1=1 --`): sin inyección SQL.

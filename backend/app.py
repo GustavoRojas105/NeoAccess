@@ -180,9 +180,21 @@ def verify_device_token(token_api: Optional[str], db_cursor, dispositivo_id: Opt
 # -------------------------------------------------------------
 # RUTAS DE AUTENTICACIÓN MULTI-ROL (RF-18 + Portales por Rol)
 # -------------------------------------------------------------
+def _password_ok(password: str, password_hash) -> bool:
+    """Acepta la contraseña tal cual; si trae espacios al inicio o al final, también sin ellos
+    (antes la pantalla de entrar los quitaba y la de registro no)."""
+    if not password_hash:
+        return False
+    if verify_password(password, password_hash):
+        return True
+    limpia = password.strip()
+    return limpia != password and bool(limpia) and verify_password(limpia, password_hash)
+
+
 @app.post("/api/auth/login")
 def login(payload: LoginRequest, request: Request):
     client_ip = request.client.host if request.client else "desconocido"
+    usuario = payload.username.strip()
 
     # Anti fuerza bruta: rechazar mientras la IP/usuario esté bloqueado
     bloqueo = login_locked_seconds(client_ip, payload.username)
@@ -197,9 +209,10 @@ def login(payload: LoginRequest, request: Request):
     cursor = conn.cursor()
 
     # 1. Intentar como Administrador
-    cursor.execute("SELECT * FROM administradores WHERE lower(username) = lower(?) AND activo = 1", (payload.username.strip(),))
+    cursor.execute("SELECT * FROM administradores WHERE (lower(username) = lower(?) OR lower(email) = lower(?)) AND activo = 1",
+                   (usuario, usuario))
     admin = cursor.fetchone()
-    if admin and verify_password(payload.password, admin["password_hash"]):
+    if admin and _password_ok(payload.password, admin["password_hash"]):
         if needs_rehash(admin["password_hash"]):
             # Migración transparente del hash antiguo (SHA-256) a PBKDF2
             cursor.execute("UPDATE administradores SET password_hash = ? WHERE id = ?",
@@ -221,9 +234,10 @@ def login(payload: LoginRequest, request: Request):
         }
 
     # 2. Intentar como Jefe de Carrera
-    cursor.execute("SELECT * FROM jefes_carrera WHERE lower(username) = lower(?) AND activo = 1", (payload.username.strip(),))
+    cursor.execute("SELECT * FROM jefes_carrera WHERE (lower(username) = lower(?) OR lower(email) = lower(?)) AND activo = 1",
+                   (usuario, usuario))
     jefe = cursor.fetchone()
-    if jefe and verify_password(payload.password, jefe["password_hash"]):
+    if jefe and _password_ok(payload.password, jefe["password_hash"]):
         if needs_rehash(jefe["password_hash"]):
             cursor.execute("UPDATE jefes_carrera SET password_hash = ? WHERE id = ?",
                            (hash_password(payload.password), jefe["id"]))
@@ -240,11 +254,11 @@ def login(payload: LoginRequest, request: Request):
     SELECT u.*, g.nombre as grupo_nombre 
     FROM usuarios u 
     LEFT JOIN grupos g ON u.grupo_id = g.id 
-    WHERE (u.matricula_clave = ? OR u.id = ?) AND u.estado = 'activo';
-    """, (payload.username, payload.username))
+    WHERE (upper(u.matricula_clave) = upper(?) OR upper(u.id) = upper(?) OR lower(u.correo) = lower(?)) AND u.estado = 'activo';
+    """, (usuario, usuario, usuario))
     user = cursor.fetchone()
 
-    if user and user["password_hash"] and verify_password(payload.password, user["password_hash"]):
+    if user and _password_ok(payload.password, user["password_hash"]):
         if needs_rehash(user["password_hash"]):
             cursor.execute("UPDATE usuarios SET password_hash = ? WHERE id = ?",
                            (hash_password(payload.password), user["id"]))

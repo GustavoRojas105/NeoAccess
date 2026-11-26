@@ -455,6 +455,31 @@ class TestValidacionNombresMatriculas(Base):
         self.assertIn("8 o 9 números", r.json()["detail"])
 
 
+class TestEntrarConCorreoYEspacios(Base):
+    """El alumno entra con su matrícula o su correo; la contraseña con espacios al final también sirve."""
+
+    def test_formas_de_entrar(self):
+        from _entorno import bd
+        from backend.auth import hash_password
+        from _entorno import poner_clave
+        c = bd()
+        c.execute("UPDATE usuarios SET correo = 'carlos.val@itsoeh.edu.mx', password_hash = ? WHERE id = 'AL-1'",
+                  (hash_password("MiClave123 "),))
+        c.commit()
+        c.close()
+        try:
+            for usuario, clave in (("22030001", "MiClave123 "), (" 22030001 ", "MiClave123 "),
+                                   ("Carlos.Val@itsoeh.edu.mx", "MiClave123 "), ("al-1", "MiClave123 ")):
+                r = C.post("/api/auth/login", json={"username": usuario, "password": clave})
+                self.assertEqual(r.status_code, 200, (usuario, clave, r.text))
+            self.assertEqual(C.post("/api/auth/login", json={"username": "22030001", "password": "MiClave12"}).status_code, 401)
+            # contraseña guardada sin espacios: si el celular agrega uno al final, igual entra
+            poner_clave("AL-1", "OtraClave456")
+            self.assertEqual(C.post("/api/auth/login", json={"username": "22030001", "password": "OtraClave456 "}).status_code, 200)
+        finally:
+            poner_clave("AL-1")
+
+
 class TestPaseDeLista(Base):
     """El docente descarga el pase de lista del día en Excel o PDF."""
     FECHA = "2026-11-28"   # sábado
