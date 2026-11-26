@@ -928,6 +928,18 @@
           </div>
         </div>
 
+        <!-- Alumnos de mis clases (grupo + inscritos aparte) -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+            <h4 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <i data-lucide="user-plus" class="w-4 h-4 text-slate-500"></i>
+              <span>Alumnos de mis clases</span>
+            </h4>
+            <span class="text-[11px] text-slate-400">Agrega a quien lleve tu materia desde otro grupo</span>
+          </div>
+          <div id="mis-clases-alumnos" class="divide-y divide-slate-100"></div>
+        </div>
+
         <!-- Pase de Lista en Tiempo Real de Alumnos -->
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div class="p-4 border-b border-slate-200 flex items-center justify-between">
@@ -994,6 +1006,26 @@
             <p id="alumno-portal-carrera" class="text-sm font-semibold text-slate-800 mt-1">—</p>
           </div>
           <div id="alumno-portal-face-status" class="md:text-right"></div>
+        </div>
+
+        <!-- Mi carga académica (SEIT) -->
+        <div class="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-sm space-y-3">
+          <div>
+            <h4 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <i data-lucide="file-input" class="w-4 h-4 text-slate-500"></i>
+              <span>Mi carga académica (SEIT)</span>
+            </h4>
+            <p class="text-xs text-slate-500 mt-1">Para que la puerta te deje entrar en todas tus clases (también las que llevas con otro grupo):
+              en el SEIT abre <strong>Carga Académica</strong>, selecciona todo (<kbd class="font-mono">Ctrl+A</kbd>), copia (<kbd class="font-mono">Ctrl+C</kbd>) y pégalo aquí.
+              Vuelve a hacerlo si cambia tu carga.</p>
+          </div>
+          <textarea id="carga-texto" rows="5" maxlength="20000" spellcheck="false" placeholder="Pega aquí tu carga académica del SEIT..."
+            class="w-full p-2 font-mono text-[11px] bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-700"></textarea>
+          <button type="button" id="btn-carga" onclick="subirMiCarga()"
+            class="inline-flex items-center gap-1.5 px-4 py-2 text-xs rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold disabled:opacity-50">
+            <i data-lucide="check" class="w-3.5 h-3.5"></i> Leer mi carga
+          </button>
+          <div id="carga-resultado"></div>
         </div>
 
         <!-- Mi horario de clases (RF-02) -->
@@ -1625,6 +1657,25 @@ bash neoaccess/setup_rpi.sh</pre>
   </div>
 
   <!-- Modal: agregar / editar cuenta de docente, alumno o limpieza -->
+  <div id="modal-clase-alumnos" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay p-4 hidden">
+    <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-5 sm:p-6 border border-slate-200 space-y-4 max-h-[95vh] overflow-y-auto">
+      <div class="flex items-start justify-between gap-3 border-b border-slate-200 pb-3">
+        <div class="min-w-0">
+          <h3 class="font-bold text-sm text-slate-900">Alumnos de la clase</h3>
+          <p id="clase-alumnos-titulo" class="text-[11px] text-slate-500"></p>
+        </div>
+        <button type="button" onclick="closeModal('modal-clase-alumnos')" class="text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <form onsubmit="agregarAlumnoAClase(event)" class="flex gap-2">
+        <input type="text" id="clase-alumnos-matricula" data-valida="matricula" data-tipo="alumno" required
+          placeholder="Matrícula del alumno" class="flex-1 p-2 text-xs bg-slate-50 border border-slate-300 rounded-lg">
+        <button type="submit" class="px-3 py-2 text-xs rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold">Agregar</button>
+      </form>
+      <p class="text-[11px] text-slate-400 -mt-2">El alumno ya debe tener cuenta. Los de tu grupo aparecen solos; aquí agregas a los de otros grupos.</p>
+      <div id="clase-alumnos-lista" class="divide-y divide-slate-100"></div>
+    </div>
+  </div>
+
   <div id="modal-cuenta" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay p-4 hidden">
     <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-5 sm:p-6 border border-slate-200 space-y-4 max-h-[95vh] overflow-y-auto">
       <div class="flex items-center justify-between border-b border-slate-200 pb-3">
@@ -1798,7 +1849,7 @@ bash neoaccess/setup_rpi.sh</pre>
   <script src="/scripts/dialogs.js?v=20261124_11"></script>
   <script src="/scripts/materias.js?v=20261125_1"></script>
   <script src="/scripts/eliminar.js?v=20261124_11"></script>
-  <script src="/scripts/app.js?v=20261126_1"></script>
+  <script src="/scripts/app.js?v=20261126_2"></script>
   <script src="/scripts/laboratories.js?v=20261124_11"></script>
   <script src="/scripts/metrics.js?v=20261125_1"></script>
   <script src="/scripts/devices.js?v=20261125_3"></script>
@@ -1810,5 +1861,6 @@ bash neoaccess/setup_rpi.sh</pre>
   <script src="/scripts/horario_portal.js?v=20261124_11"></script>
   <script src="/scripts/periodos.js?v=20261124_11"></script>
   <script src="/scripts/cuentas.js?v=20261126_2"></script>
+  <script src="/scripts/carga.js?v=20261126_1"></script>
 </body>
 </html>

@@ -1,0 +1,30 @@
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+           SEP   INSTITUTO TECNOLÓGICO SUPERIOR DEL OCCIDENTE DEL ESTADO DE HIDALGO   SEIT
+                                Carga Académica del Alumno              Fecha      : 16/08/26
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+N. Control : 230110627             Periodo    : AGO-DIC-2026                  Hora       : 10:26:
+Nombre     : SANTILLAN HERNANDEZ RAFAEL
+Semestre   : 7                     Créditos   : 38
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+                            Cr    Lunes      Martes     Miércoles    Jueves      Viernes     Sábado
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+107B LENGUAJES Y AUTÓMATA   5                          15:00-16:00 12:00-14:00 13:00-15:00
+     RICARDO MARTINEZ LOPEZ                             Salón 406   Salón 408   Salón M1
+207B CONMUTACIÓN Y ENRUTA   5  17:00-20:00                         17:00-19:00
+     GERMAN REBOLLEDO AVALOS    Salón LPB                           Salón 408
+307B INTELIGENCIA ARTIFIC   4              18:00-20:00 18:00-20:00
+     JORGE ARMANDO GARCIA BAUT              Salón 402   Salón 406
+507B SISTEMAS PROGRAMABLE   4              13:00-15:00             15:00-17:00
+     JOSUE EMANUEL RODRIGUEZ A              Salón LMU               Salón 408
+98AB TÓPICOS DEL FRONT-EN   5  13:00-15:00 11:00-13:00 17:00-18:00
+     SERGIO CRUZ PEREZ          Salón 401   Salón LRE   Salón 406
+98BB TÓPICOS DE BASE DE D   5              16:00-18:00             14:00-15:00 17:00-19:00
+     JAVIER PEREZ ESCAMILLA                 Salón 402               Salón 408   Salón 406
+S07B SERVICIO SOCIAL        10                                                             11:30-12:00
+     CARMEN ROJO MONROY                                                                     Salón SS
+T07B TUTORÍA VII            0              15:00-16:00
+     LORENA MENDOZA GUZMAN                  Salón 402
+X07B INGLÉS VII             0  15:00-17:00             16:00-17:00             15:00-17:00
+     IRIS CRISTAL PEREZ RESEND  Salón 406               Salón 406               Salón 406
+
+Nota Importante: Desde esta pagina puedes descargar el temario de las materias que estas cursando.

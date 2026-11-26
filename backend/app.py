@@ -34,7 +34,7 @@ from backend.auth import (
     login_locked_seconds, register_failed_login, reset_failed_logins
 )
 from backend.models import (
-    LoginRequest, GoogleLoginRequest, RegisterRequest, AdminCreate, PasswordChange, JefeCreate, JefeCarreras, GroupUpdate, ResendVerificationRequest, VerifyCodeRequest, PasswordResetRequest, MaintenancePayload, LabCreate, LabUpdate, DeviceCreate, GroupCreate,
+    LoginRequest, GoogleLoginRequest, CargaAcademicaRequest, InscribirAlumnoRequest, RegisterRequest, AdminCreate, PasswordChange, JefeCreate, JefeCarreras, GroupUpdate, ResendVerificationRequest, VerifyCodeRequest, PasswordResetRequest, MaintenancePayload, LabCreate, LabUpdate, DeviceCreate, GroupCreate,
     UserCreate, FacialMetadataCreate, FacialCapturePayload, ScheduleCreate,
     HeartbeatPayload, AccessAttemptPayload, CleaningPayload, CommandAckPayload
 )
@@ -855,10 +855,13 @@ def get_student_portal(user: dict = Depends(require_role("alumno"))):
     FROM horarios h
     JOIN laboratorios l ON h.laboratorio_id = l.id
     LEFT JOIN usuarios u ON h.docente_id = u.id
-    WHERE h.grupo_id = ? AND h.periodo_id = ?
+    WHERE (h.grupo_id = ? OR h.id IN (SELECT horario_id FROM inscripciones_clase WHERE usuario_id = ?))
+      AND h.periodo_id = ?
     ORDER BY CASE h.dia_semana WHEN 'Lunes' THEN 1 WHEN 'Martes' THEN 2 WHEN 'Miércoles' THEN 3 WHEN 'Jueves' THEN 4 WHEN 'Viernes' THEN 5 ELSE 6 END, h.hora_inicio ASC;
-    """, (grupo_id, periodo["id"]))
+    """, (grupo_id, user_id, periodo["id"]))
     horarios = [dict(r) for r in cursor.fetchall()]
+    for h in horarios:
+        h["por_carga"] = h["grupo_id"] != grupo_id
 
     # Historial de accesos / pase de lista (RF-06)
     cursor.execute("""
@@ -906,7 +909,9 @@ def get_teacher_portal(user: dict = Depends(require_role("docente"))):
         l.nombre as laboratorio_nombre,
         l.edificio,
         g.nombre as grupo_nombre,
-        g.clave as grupo_clave
+        g.clave as grupo_clave,
+        (SELECT COUNT(*) FROM usuarios a WHERE a.tipo = 'alumno' AND a.estado = 'activo'
+           AND (a.grupo_id = h.grupo_id OR a.id IN (SELECT usuario_id FROM inscripciones_clase ic WHERE ic.horario_id = h.id))) AS alumnos
     FROM horarios h
     JOIN laboratorios l ON h.laboratorio_id = l.id
     LEFT JOIN grupos g ON h.grupo_id = g.id
@@ -1000,6 +1005,146 @@ def download_attendance_list(
     nombre = re.sub(r"[^A-Za-z0-9_.-]", "-", f"pase_lista_{dia.isoformat()}{sufijo}.{formato}")
     return Response(content=contenido, media_type=tipo,
                     headers={"Content-Disposition": f'attachment; filename="{nombre}"'})
+
+# -------------------------------------------------------------
+# CARGA ACADÉMICA (SEIT) E INSCRIPCIÓN A CLASES
+# Un alumno puede llevar materias con otros grupos (98AB, recursamientos...). Esas clases
+# se guardan en inscripciones_clase: la puerta lo deja pasar y sale en el pase de lista.
+# -------------------------------------------------------------
+def _guardar_carga(cursor, alumno, texto: str) -> dict:
+    from backend import carga_academica as ca
+    carga = ca.leer_carga(texto)
+    if not carga["materias"]:
+        raise HTTPException(status_code=400, detail=(
+            "No encontré materias en el texto. En el SEIT abre tu «Carga Académica», "
+            "selecciona todo (Ctrl+A), copia (Ctrl+C) y pégalo aquí."))
+    if carga["control"] and carga["control"] != str(alumno["matricula_clave"]):
+        raise HTTPException(status_code=400, detail=(
+            f"Esta carga es del número de control {carga['control']}, "
+            f"pero la cuenta es de {alumno['matricula_clave']}."))
+    periodo = periodo_activo(cursor)
+    horarios = [dict(r) for r in cursor.execute("""
+        SELECT h.id, h.dia_semana, h.hora_inicio, h.hora_fin, h.laboratorio_id, h.materia, h.grupo_id,
+               u.nombre_completo AS docente_nombre
+        FROM horarios h LEFT JOIN usuarios u ON u.id = h.docente_id
+        WHERE h.periodo_id = ?""", (periodo["id"],))]
+    labs = {r["id"] for r in cursor.execute("SELECT id FROM laboratorios")}
+    res = ca.ligar_con_horarios(carga, horarios, labs)
+    cursor.execute("""DELETE FROM inscripciones_clase WHERE usuario_id = ? AND origen = 'carga'
+                      AND horario_id IN (SELECT id FROM horarios WHERE periodo_id = ?)""", (alumno["id"], periodo["id"]))
+    for s in res["ligadas"]:
+        cursor.execute("""INSERT OR IGNORE INTO inscripciones_clase (usuario_id, horario_id, origen, codigo_seit)
+                          VALUES (?, ?, 'carga', ?)""", (alumno["id"], s["horario_id"], s["codigo"]))
+    res["materias"] = len(carga["materias"])
+    res["mensaje"] = (f"Se leyeron {res['materias']} materias: {len(res['ligadas'])} clase(s) en laboratorio quedaron ligadas."
+                      + (f" {len(res['sin_clase'])} en laboratorio no coinciden con ningún horario registrado." if res["sin_clase"] else ""))
+    return res
+
+
+@app.post("/api/portal/student/carga")
+def subir_mi_carga(payload: CargaAcademicaRequest, user: dict = Depends(require_role("alumno"))):
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        alumno = cursor.execute("SELECT id, matricula_clave FROM usuarios WHERE id = ?", (user["user_id"],)).fetchone()
+        res = _guardar_carga(cursor, alumno, payload.texto)
+        conn.commit()
+        return res
+    finally:
+        conn.close()
+
+
+@app.post("/api/users/{user_id}/carga")
+def subir_carga_de_alumno(user_id: str, payload: CargaAcademicaRequest, staff: dict = Depends(get_current_staff)):
+    """El administrador o el jefe de carrera pegan la carga por el alumno."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        alumno = cursor.execute("SELECT id, matricula_clave, carrera, tipo FROM usuarios WHERE id = ?", (user_id,)).fetchone()
+        if not alumno or alumno["tipo"] != "alumno":
+            raise HTTPException(status_code=404, detail="Alumno no encontrado.")
+        exigir_carrera(staff, alumno["carrera"], "este alumno")
+        res = _guardar_carga(cursor, alumno, payload.texto)
+        conn.commit()
+        return res
+    finally:
+        conn.close()
+
+
+def _clase_del_docente(cursor, horario_id: int, docente_id: str):
+    clase = cursor.execute("SELECT * FROM horarios WHERE id = ? AND docente_id = ?", (horario_id, docente_id)).fetchone()
+    if not clase:
+        raise HTTPException(status_code=404, detail="Esa clase no existe o no es tuya.")
+    return clase
+
+
+def _sesiones_de_la_materia(cursor, clase) -> list:
+    """Todas las sesiones de la semana de esa materia, con ese grupo y ese docente (p. ej. martes, jueves y viernes)."""
+    return [r["id"] for r in cursor.execute("""
+        SELECT id FROM horarios WHERE docente_id = ? AND materia = ? AND periodo_id = ?
+          AND COALESCE(grupo_id, '') = COALESCE(?, '')""",
+        (clase["docente_id"], clase["materia"], clase["periodo_id"], clase["grupo_id"]))]
+
+
+@app.get("/api/portal/teacher/classes/{horario_id}/students")
+def alumnos_de_mi_clase(horario_id: int, user: dict = Depends(require_role("docente"))):
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        clase = _clase_del_docente(cursor, horario_id, user["user_id"])
+        filas = cursor.execute("""
+            SELECT u.id, u.nombre_completo, u.matricula_clave, u.grupo_id, ic.origen,
+                   CASE WHEN u.grupo_id = ? THEN 'grupo' ELSE 'inscrito' END AS como
+            FROM usuarios u LEFT JOIN inscripciones_clase ic ON ic.usuario_id = u.id AND ic.horario_id = ?
+            WHERE u.tipo = 'alumno' AND u.estado = 'activo' AND (u.grupo_id = ? OR ic.id IS NOT NULL)
+            ORDER BY u.nombre_completo COLLATE NOCASE""", (clase["grupo_id"], horario_id, clase["grupo_id"])).fetchall()
+        return {"clase": dict(clase), "alumnos": [dict(r) for r in filas]}
+    finally:
+        conn.close()
+
+
+@app.post("/api/portal/teacher/classes/{horario_id}/students")
+def agregar_alumno_a_mi_clase(horario_id: int, payload: InscribirAlumnoRequest, user: dict = Depends(require_role("docente"))):
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        clase = _clase_del_docente(cursor, horario_id, user["user_id"])
+        matricula = "".join(payload.matricula.split()).upper()
+        alumno = cursor.execute("""SELECT id, nombre_completo, grupo_id FROM usuarios
+                                   WHERE tipo = 'alumno' AND estado = 'activo' AND upper(matricula_clave) = ?""",
+                                (matricula,)).fetchone()
+        if not alumno:
+            raise HTTPException(status_code=404, detail=(
+                f"No hay un alumno activo con la matrícula {matricula}. Primero debe crear su cuenta en NeoAccess."))
+        if alumno["grupo_id"] and alumno["grupo_id"] == clase["grupo_id"]:
+            return {"success": True, "message": f"{alumno['nombre_completo']} ya está en esta clase por su grupo."}
+        sesiones = _sesiones_de_la_materia(cursor, clase)
+        for hid in sesiones:
+            cursor.execute("""INSERT OR IGNORE INTO inscripciones_clase (usuario_id, horario_id, origen)
+                              VALUES (?, ?, 'docente')""", (alumno["id"], hid))
+        conn.commit()
+        dias = f" ({len(sesiones)} sesiones a la semana)" if len(sesiones) > 1 else ""
+        return {"success": True, "message": f"{alumno['nombre_completo']} quedó inscrito(a) en {clase['materia']}{dias}."}
+    finally:
+        conn.close()
+
+
+@app.delete("/api/portal/teacher/classes/{horario_id}/students/{usuario_id}")
+def quitar_alumno_de_mi_clase(horario_id: int, usuario_id: str, user: dict = Depends(require_role("docente"))):
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        clase = _clase_del_docente(cursor, horario_id, user["user_id"])
+        sesiones = _sesiones_de_la_materia(cursor, clase)
+        cursor.execute(f"""DELETE FROM inscripciones_clase WHERE usuario_id = ?
+                           AND horario_id IN ({",".join("?" * len(sesiones))})""", (usuario_id, *sesiones))
+        conn.commit()
+        if not cursor.rowcount:
+            raise HTTPException(status_code=400, detail="Ese alumno está en la clase por su grupo; solo se pueden quitar los inscritos aparte.")
+        return {"success": True, "message": "Alumno quitado de la clase."}
+    finally:
+        conn.close()
+
 
 @app.get("/api/portal/cleaning-data")
 def get_cleaning_portal(user: dict = Depends(require_role("personal_limpieza"))):
@@ -1676,9 +1821,15 @@ def get_sync_offline_rules(
     JOIN metadatos_faciales mf ON u.id = mf.usuario_id
     WHERE u.estado = 'activo';
     """)
+    filas_usuarios = cursor.fetchall()
+    extra = {}
+    for r in cursor.execute("""SELECT ic.usuario_id, ic.horario_id FROM inscripciones_clase ic
+                               JOIN horarios h ON h.id = ic.horario_id WHERE h.laboratorio_id = ?""", (lab_id,)):
+        extra.setdefault(r["usuario_id"], []).append(r["horario_id"])
     usuarios_cache = []
-    for r in cursor.fetchall():
+    for r in filas_usuarios:
         usuarios_cache.append({
+            "horarios_extra": extra.get(r["id"], []),
             "usuario_id": r["id"],
             "nombre": r["nombre_completo"],
             "tipo": r["tipo"],

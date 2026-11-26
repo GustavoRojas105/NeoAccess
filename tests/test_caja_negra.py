@@ -480,6 +480,97 @@ class TestEntrarConCorreoYEspacios(Base):
             poner_clave("AL-1")
 
 
+class TestCargaYClasesExtra(Base):
+    """Carga académica del SEIT y alumnos agregados por el docente a una clase de otro grupo."""
+    FECHA = "2026-11-28"   # sábado
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        C.post("/api/groups", headers=cls.A, json={"id": "ISC-98A", "nombre": "98A Especialidad", "carrera": ISC, "semestre": 7})
+        r = C.post("/api/schedules", headers=cls.A, json={
+            "grupo_id": "ISC-98A", "laboratorio_id": "LAB-RED", "docente_id": "DOC-ISC",
+            "materia": "Programación Web", "dia_semana": "Sábado", "hora_inicio": "09:00", "hora_fin": "11:00"})
+        assert r.status_code == 200, r.text
+        from _entorno import bd
+        c = bd()
+        cls.horario = c.execute("""SELECT id FROM horarios WHERE grupo_id = 'ISC-98A' AND dia_semana = 'Sábado'
+                                   AND hora_inicio = '09:00'""").fetchone()[0]
+        c.close()
+        r = C.post("/api/schedules", headers=cls.A, json={
+            "grupo_id": "ISC-98A", "laboratorio_id": "LAB-RED", "docente_id": "DOC-ISC",
+            "materia": "Programación Web", "dia_semana": "Sábado", "hora_inicio": "19:00", "hora_fin": "20:00"})
+        assert r.status_code == 200, r.text
+        c = bd()
+        cls.horario2 = c.execute("""SELECT id FROM horarios WHERE grupo_id = 'ISC-98A' AND hora_inicio = '19:00'""").fetchone()[0]
+        c.close()
+
+    def carga(self, control="22030001", docente="LAURA PEREZ"):
+        return (f"N. Control : {control}\n"
+                "98AB PROGRAMACION WEB 5 09:00-11:00 16:00-17:00\n"
+                f"     {docente} Salón LAB-RED Salón 402\n"
+                "T07B TUTORIA VII 0 15:00-16:00\n"
+                "     OTRA PERSONA Salón 402\n")
+
+    def subir(self, H, texto, ruta="/api/portal/student/carga"):
+        return C.post(ruta, headers=H, json={"texto": texto})
+
+    def test_alumno_sube_su_carga(self):
+        r = self.subir(self.AL, self.carga())
+        self.assertEqual(r.status_code, 200, r.text)
+        d = r.json()
+        self.assertEqual(([s["horario_id"] for s in d["ligadas"]], d["materias"]), ([self.horario], 2))
+        self.assertEqual(len(d["en_salon"]), 2)
+        h = [x for x in C.get("/api/portal/student-data", headers=self.AL).json()["horarios_autorizados"] if x["id"] == self.horario]
+        self.assertTrue(h and h[0]["por_carga"])
+        # sale en el pase de lista del docente aunque sea de otro grupo
+        import openpyxl
+        x = C.get("/api/portal/teacher/attendance-list", headers=self.DO,
+                  params={"formato": "xlsx", "fecha": self.FECHA, "horario_id": self.horario})
+        self.assertEqual(x.status_code, 200, x.text)
+        filas = [[c.value for c in f] for f in openpyxl.load_workbook(io.BytesIO(x.content)).active.iter_rows()]
+        self.assertTrue(any(f[1] == "22030001" for f in filas))
+        # volver a subirla con otro docente quita la clase anterior
+        self.assertEqual(self.subir(self.AL, self.carga(docente="NADIE")).json()["ligadas"], [])
+        self.assertFalse([x for x in C.get("/api/portal/student-data", headers=self.AL).json()["horarios_autorizados"]
+                          if x["id"] == self.horario])
+
+    def test_carga_de_otra_matricula_o_vacia(self):
+        r = self.subir(self.AL, self.carga(control="99999999"))
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("99999999", r.json()["detail"])
+        self.assertEqual(self.subir(self.AL, "hola esto no es una carga académica").status_code, 400)
+        self.assertEqual(self.subir(self.DO, self.carga()).status_code, 403)
+
+    def test_admin_y_jefe_suben_la_carga_por_el_alumno(self):
+        self.assertEqual(self.subir(self.A, self.carga(), "/api/users/AL-1/carga").status_code, 200)
+        self.assertEqual(self.subir(self.J, self.carga(), "/api/users/AL-1/carga").status_code, 200)   # jefe de Sistemas
+        self.assertEqual(self.subir(self.A, self.carga(), "/api/users/DOC-ISC/carga").status_code, 404)
+
+    def test_docente_agrega_y_quita_alumnos(self):
+        ruta = f"/api/portal/teacher/classes/{self.horario}/students"
+        C.delete(f"{ruta}/AL-1", headers=self.DO)
+        self.assertEqual(C.post(ruta, headers=self.DO, json={"matricula": "00000000"}).status_code, 404)
+        r = C.post(ruta, headers=self.DO, json={"matricula": " 22030001 "})
+        self.assertEqual(r.status_code, 200, r.text)
+        lista = C.get(ruta, headers=self.DO).json()["alumnos"]
+        self.assertEqual([(a["id"], a["como"], a["origen"]) for a in lista], [("AL-1", "inscrito", "docente")])
+        # la otra sesión de esa materia (sábado 19:00) también lo tiene
+        lista2 = C.get(f"/api/portal/teacher/classes/{self.horario2}/students", headers=self.DO).json()["alumnos"]
+        self.assertEqual([x["id"] for x in lista2], ["AL-1"])
+        # el docente ve cuántos alumnos tiene la clase
+        clase = [c for c in C.get("/api/portal/teacher-data", headers=self.DO).json()["clases_asignadas"] if c["id"] == self.horario][0]
+        self.assertEqual(clase["alumnos"], 1)
+        self.assertEqual(C.delete(f"{ruta}/AL-1", headers=self.DO).status_code, 200)
+        self.assertEqual(C.delete(f"{ruta}/AL-1", headers=self.DO).status_code, 400)
+        # otro docente o un alumno no pueden tocar esta clase
+        from _entorno import poner_clave
+        poner_clave("DOC-CIV")
+        otro = entrar("200", CLAVE_PRUEBA)
+        self.assertEqual(C.get(ruta, headers=otro).status_code, 404)
+        self.assertEqual(C.post(ruta, headers=self.AL, json={"matricula": "22030001"}).status_code, 403)
+
+
 class TestPaseDeLista(Base):
     """El docente descarga el pase de lista del día en Excel o PDF."""
     FECHA = "2026-11-28"   # sábado

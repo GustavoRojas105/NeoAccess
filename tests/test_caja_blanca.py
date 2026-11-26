@@ -405,6 +405,58 @@ class TestRaspberry(unittest.TestCase):
         al = {"tipo": "alumno", "grupo_id": "G1"}
         self.assertFalse(self.validar(self.puerta(), al, datetime(2026, 11, 25, 7, 30))[0])  # miércoles
 
+    def test_alumno_inscrito_aparte_por_su_carga(self):
+        puerta = self.puerta()
+        puerta.offline_cache["horarios"][0]["id"] = 77
+        otro_grupo = {"tipo": "alumno", "grupo_id": "G2", "usuario_id": "B"}
+        self.assertFalse(self.validar(puerta, otro_grupo, self.hora("07:30"))[0])
+        self.assertTrue(self.validar(puerta, {**otro_grupo, "horarios_extra": [77]}, self.hora("07:30"))[0])
+        self.assertFalse(self.validar(puerta, {**otro_grupo, "horarios_extra": [78]}, self.hora("07:30"))[0])
+
+
+# ───────────────────────── Carga académica del SEIT ─────────────────────────
+class TestCargaAcademica(unittest.TestCase):
+    """Lectura de la «Carga Académica del Alumno» copiada del SEIT (ejemplo real: 7.º semestre)."""
+
+    @classmethod
+    def setUpClass(cls):
+        from backend import carga_academica as ca
+        cls.ca = ca
+        with io.open(os.path.join(RAIZ, "tests", "datos", "carga_seit_ejemplo.txt"), encoding="utf-8") as f:
+            cls.texto = f.read()
+
+    def test_lee_materias_dias_y_salones(self):
+        carga = self.ca.leer_carga(self.texto)
+        self.assertEqual(carga["control"], "230110627")
+        self.assertEqual([m["codigo"] for m in carga["materias"]],
+                         ["107B", "207B", "307B", "507B", "98AB", "98BB", "S07B", "T07B", "X07B"])
+        prog = carga["materias"][3]
+        self.assertEqual(prog["docente"], "JOSUE EMANUEL RODRIGUEZ A")
+        self.assertEqual(prog["sesiones"][0], {"dia": "Martes", "inicio": "13:00", "fin": "15:00", "salon": "LMU"})
+        self.assertEqual([s["dia"] for s in carga["materias"][4]["sesiones"]], ["Lunes", "Martes", "Miércoles"])
+        self.assertEqual(carga["materias"][6]["sesiones"][0]["dia"], "Sábado")
+        # un docente de nombre corto (IRIS ...) no se confunde con una materia
+        self.assertEqual(carga["materias"][8]["docente"], "IRIS CRISTAL PEREZ RESEND")
+
+    def test_texto_sin_espacios_y_ligado(self):
+        import re as _re
+        plano = "\n".join(_re.sub(r" +", " ", l) for l in self.texto.split("\n"))
+        carga = self.ca.leer_carga(plano)
+        self.assertEqual(len(carga["materias"]), 9)
+        self.assertTrue(all(s["dia"] is None for m in carga["materias"] for s in m["sesiones"]))
+        horarios = [
+            {"id": 1, "dia_semana": "Martes", "hora_inicio": "13:00", "hora_fin": "15:00", "laboratorio_id": "LMU",
+             "materia": "Sistemas Programables", "grupo_id": "ISC-7B", "docente_nombre": "JOSUÉ EMANUEL RODRÍGUEZ ALLENDE"},
+            {"id": 2, "dia_semana": "Martes", "hora_inicio": "11:00", "hora_fin": "13:00", "laboratorio_id": "LRE",
+             "materia": "Tópicos de Base de Datos", "grupo_id": "ISC-7B", "docente_nombre": "JAVIER PÉREZ ESCAMILLA"},
+        ]
+        for texto in (self.texto, plano):
+            res = self.ca.ligar_con_horarios(self.ca.leer_carga(texto), horarios, {"LMU", "LRE", "LPB"})
+            self.assertEqual([s["horario_id"] for s in res["ligadas"]], [1])
+            # LRE es laboratorio pero ahí el SEIT dice otra materia/docente: se avisa
+            self.assertEqual([(s["codigo"], s["salon"]) for s in res["sin_clase"]], [("207B", "LPB"), ("98AB", "LRE")])
+            self.assertIn(("107B", "406"), [(s["codigo"], s["salon"]) for s in res["en_salon"]])
+
 
 # ───────────────────────── Portal (JavaScript): hpEstadoClase ─────────────────────────
 @unittest.skipUnless(shutil.which("node"), "Node.js no está instalado")

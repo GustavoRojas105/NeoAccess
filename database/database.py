@@ -273,6 +273,20 @@ def init_db():
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_inscripciones_usuario ON inscripciones (usuario_id);")
 
+    # 13b. Alumnos inscritos a clases fuera de su grupo (carga académica del SEIT o agregados por el docente)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS inscripciones_clase (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        usuario_id TEXT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+        horario_id INTEGER NOT NULL REFERENCES horarios(id) ON DELETE CASCADE,
+        origen TEXT NOT NULL DEFAULT 'carga',
+        codigo_seit TEXT,
+        fecha TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (usuario_id, horario_id)
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_inscripciones_clase_horario ON inscripciones_clase (horario_id);")
+
     # 14. Jefes de carrera (cuenta aparte, una o más carreras)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS jefes_carrera (

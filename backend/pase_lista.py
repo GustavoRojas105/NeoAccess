@@ -51,13 +51,14 @@ def clases_del_dia(cursor, docente_id: str, periodo_id: str, fecha: date, tolera
             GROUP BY usuario_id
         """, (c["laboratorio_id"], desde, hasta)).fetchall()}
 
-        alumnos = []
-        if c["grupo_id"]:
-            alumnos = [dict(r) for r in cursor.execute("""
-                SELECT id, nombre_completo, matricula_clave FROM usuarios
-                WHERE tipo = 'alumno' AND estado = 'activo' AND grupo_id = ?
-                ORDER BY nombre_completo COLLATE NOCASE
-            """, (c["grupo_id"],)).fetchall()]
+        # alumnos del grupo + los inscritos aparte (carga académica o agregados por el docente)
+        alumnos = [dict(r) for r in cursor.execute("""
+            SELECT id, nombre_completo, matricula_clave FROM usuarios
+            WHERE tipo = 'alumno' AND estado = 'activo'
+              AND ((grupo_id IS NOT NULL AND grupo_id = ?)
+                   OR id IN (SELECT usuario_id FROM inscripciones_clase WHERE horario_id = ?))
+            ORDER BY nombre_completo COLLATE NOCASE
+        """, (c["grupo_id"], c["id"])).fetchall()]
         terminada = ahora >= fin
         for a in alumnos:
             entrada = entradas.get(a["id"])

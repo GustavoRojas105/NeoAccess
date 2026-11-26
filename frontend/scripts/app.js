@@ -261,6 +261,7 @@ async function loadTeacherPortalView() {
     pintarPeriodo(data.periodo);
 
     PASE_CLASES = data.clases_asignadas || [];
+    if (typeof pintarMisClases === "function") pintarMisClases(PASE_CLASES);
     const campoFecha = document.getElementById("pase-fecha");
     if (campoFecha && !campoFecha.value) campoFecha.value = (data.ahora || "").slice(0, 10);
     pintarPaseDeLista();

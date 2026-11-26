@@ -516,8 +516,10 @@ class NeoAccessRaspberryNode:
             return h["hora_inicio"] <= hora_con_tolerancia and hora_actual <= h["hora_fin"]
 
         if u_type == "alumno":
+            # su grupo, o una clase en la que está inscrito aparte (carga académica del SEIT)
+            extra = set(user.get("horarios_extra") or [])
             for h in horarios:
-                if h["dia_semana"] == dia_actual and h["grupo_id"] == grupo_id:
+                if h["dia_semana"] == dia_actual and (h["grupo_id"] == grupo_id or h.get("id") in extra):
                     if en_horario(h):
                         return True, f"Acceso de alumno autorizado: Clase de {h['materia']} (Grupo {grupo_id})"
             return False, f"Acceso denegado: El grupo {grupo_id} no tiene clase en este salón a las {hora_actual} ({dia_actual})"

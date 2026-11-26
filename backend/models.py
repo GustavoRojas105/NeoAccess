@@ -10,6 +10,13 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
+class CargaAcademicaRequest(BaseModel):
+    """Texto copiado de la «Carga Académica del Alumno» del SEIT."""
+    texto: str = Field(..., min_length=20, max_length=20000)
+
+class InscribirAlumnoRequest(BaseModel):
+    matricula: str = Field(..., min_length=3, max_length=40)
+
 class GoogleLoginRequest(BaseModel):
     """ID token (JWT) que entrega el botón «Continuar con Google»."""
     credential: str = Field(..., min_length=20, max_length=4096)
