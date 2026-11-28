@@ -9,7 +9,9 @@ NeoAccess - Reglas comunes para nombres de personas y matrículas/claves.
   Los docentes dados de alta antes con claves tipo DOC-ISC-01 la conservan mientras no la cambien.
 - Personal de limpieza / mantenimiento: clave de letras, números y guiones (p. ej. LIM-01).
 """
+import difflib
 import re
+import unicodedata
 
 from fastapi import HTTPException
 
@@ -22,6 +24,37 @@ _NOMBRE_RE = re.compile(r"^[A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ .'-]*$")
 _MATRICULA_RE = re.compile(rf"^\d{{{MATRICULA_MIN},{MATRICULA_MAX}}}$")
 _CLAVE_RE = re.compile(rf"^[A-Z0-9-]{{{CLAVE_MIN},{CLAVE_MAX}}}$")
 _EMPLEADO_RE = re.compile(rf"^\d{{{EMPLEADO_MIN},{EMPLEADO_MAX}}}$")
+
+
+_PARTICULAS = {"DE", "DEL", "LA", "LAS", "LOS", "Y"}
+
+
+def palabras_nombre(nombre) -> list:
+    """'José de la Peña' -> ['JOSE', 'PENA']: sin acentos, sin partículas, para comparar nombres."""
+    s = unicodedata.normalize("NFD", str(nombre or "").upper())
+    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+    s = re.sub(r"[^A-Z ]", " ", s)
+    return [w for w in s.split() if w not in _PARTICULAS]
+
+
+def nombres_parecidos(a, b) -> bool:
+    """Mismo nombre aunque cambie el orden, los acentos, falte un nombre o tenga un error de dedo."""
+    pa, pb = palabras_nombre(a), palabras_nombre(b)
+    if not pa or not pb:
+        return False
+    sa, sb = set(pa), set(pb)
+    if sa == sb:
+        return True
+    menor, mayor = (sa, sb) if len(sa) <= len(sb) else (sb, sa)
+    if len(menor) >= 3 and menor <= mayor:          # p. ej. le falta el segundo nombre
+        return True
+    return difflib.SequenceMatcher(None, " ".join(sorted(pa)), " ".join(sorted(pb))).ratio() >= 0.95
+
+
+def clave_comparable(valor) -> str:
+    """'00123' == '123' y 'lim-01' == 'LIM01': así no se repite la misma clave escrita distinto."""
+    s = re.sub(r"[^A-Z0-9]", "", str(valor or "").upper())
+    return (s.lstrip("0") or "0") if s.isdigit() else s
 
 
 def normalizar_nombre(nombre, que: str = "El nombre") -> str:

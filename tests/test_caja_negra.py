@@ -7,6 +7,16 @@ import io
 import unittest
 from datetime import datetime
 
+import random as _random
+
+_AZAR = _random.Random(2026)
+
+
+def nombre_unico(prefijo="Persona"):
+    """Nombre distinto en cada llamada (el sistema no deja dar de alta dos nombres iguales o parecidos)."""
+    return f"{prefijo} " + "".join(_AZAR.choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ") for _ in range(9))
+
+
 from _entorno import cliente as C, admin, entrar, sembrar, limpiar_intentos, ISC, CIV, CLAVE_ADMIN, CLAVE_PRUEBA
 
 
@@ -233,7 +243,7 @@ class TestCuentasPortal(Base):
         self.assertNotIn("password_hash", u)                                              # nunca se expone el hash
         self.assertTrue(entrar("LIM-T1", "limpia2026"))
         # Sin contraseña: se crea, pero no puede entrar
-        self.assertEqual(C.post("/api/users", headers=self.A, json={**lim, "id": "LIM-T2", "matricula_clave": "LIM-T2"}).status_code, 200)
+        self.assertEqual(C.post("/api/users", headers=self.A, json={**lim, "id": "LIM-T2", "matricula_clave": "LIM-T2", "nombre_completo": "Rocío Sin Clave"}).status_code, 200)
         self.assertFalse(self.flag("LIM-T2", "personal_limpieza")["tiene_password"])
 
     def test_editar_datos_y_contrasena(self):
@@ -285,7 +295,7 @@ class TestCodigosPorCorreo(Base):
         return self.re.search(r"\b(\d{6})\b", texto).group(1)
 
     def registrar(self, correo, matricula, tipo="alumno"):
-        r = C.post("/api/auth/register", json={"tipo": tipo, "nombre_completo": "Persona de Prueba",
+        r = C.post("/api/auth/register", json={"tipo": tipo, "nombre_completo": nombre_unico(),
                                                "matricula_clave": matricula, "correo": correo,
                                                "carrera": ISC, "password": "ClaveNueva123"})
         self.assertEqual(r.status_code, 200, r.text)
@@ -391,12 +401,12 @@ class TestValidacionNombresMatriculas(Base):
     """Nombres en MAYÚSCULAS y solo letras; matrícula de alumno de 8 o 9 números; clave de docente."""
 
     def alta(self, **cambios):
-        datos = {"id": "VAL-1", "nombre_completo": "  maría   josé  peña ", "matricula_clave": "230110999",
+        datos = {"id": "VAL-1", "nombre_completo": nombre_unico("Alumno"), "matricula_clave": "230110999",
                  "tipo": "alumno", "carrera": ISC, "grupo_id": None, "estado": "activo", **cambios}
         return C.post("/api/users", headers=self.A, json=datos)
 
     def test_nombre_se_guarda_en_mayusculas(self):
-        r = self.alta()
+        r = self.alta(nombre_completo="  maría   josé  peña ")
         self.assertEqual(r.status_code, 200, r.text)
         self.assertIn("MARÍA JOSÉ PEÑA", r.json()["message"])
         usuarios = C.get("/api/users", headers=self.A).json()
@@ -418,7 +428,7 @@ class TestValidacionNombresMatriculas(Base):
     def test_numero_de_empleado_del_docente(self):
         base = {"tipo": "docente", "nombre_completo": "Docente Validado"}
         self.assertEqual(self.alta(id="VAL-D1", matricula_clave="004512", **base).status_code, 200)
-        self.assertEqual(self.alta(id="VAL-D2", matricula_clave=" 12 34 ", **base).status_code, 200)   # espacios se quitan
+        self.assertEqual(self.alta(id="VAL-D2", matricula_clave=" 12 34 ", **{**base, "nombre_completo": "Docente Segundo Validado"}).status_code, 200)   # espacios se quitan
         for i, mal in enumerate(("DOC-ISC-99", "12", "12345678901", "E-1234")):
             r = self.alta(id=f"VAL-D{i + 3}", matricula_clave=mal, **base)
             self.assertEqual(r.status_code, 400, mal)
@@ -561,6 +571,40 @@ class TestJefeAsignaAlumnos(Base):
         al = [u for u in r["usuarios"] if u["usuario_id"] == "AG-1"]
         self.assertEqual(al[0]["grupo_id"], "ISC-AG")
         self.assertTrue(any(h["grupo_id"] == "ISC-AG" for h in r["horarios"]))
+
+
+class TestSinPersonasRepetidas(Base):
+    """Nadie se puede dar de alta dos veces: ni la misma clave escrita distinto ni un nombre igual o casi igual."""
+
+    def alta(self, uid, mat, nombre, tipo="docente", H=None):
+        return C.post("/api/users", headers=H or self.A, json={
+            "id": uid, "matricula_clave": mat, "nombre_completo": nombre, "tipo": tipo,
+            "carrera": ISC, "grupo_id": None, "estado": "activo"})
+
+    def test_nombre_y_clave_repetidos(self):
+        r = self.alta("DUP-1", "77001", "Ramiro Ibáñez de la Torre")
+        self.assertEqual(r.status_code, 200, r.text)
+        for nombre in ("RAMIRO IBANEZ DE LA TORRE", "Ibáñez Torre Ramiro", "Ramiro  Ibañez Torre",
+                       "RAMIRO IBÁÑEZ DE LA TORREZ", "Ramiro Alonso Ibáñez de la Torre"):
+            r = self.alta("DUP-2", "77002", nombre)
+            self.assertEqual(r.status_code, 400, nombre)
+            self.assertIn("77001", r.json()["detail"])
+        r = self.alta("DUP-3", "077001", "Persona Distinta Uno")       # misma clave con cero a la izquierda
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("ya es de", r.json()["detail"])
+        self.assertEqual(self.alta("DUP-4", "77004", "Ramira Ibarra Soto").status_code, 200)   # otra persona
+
+    def test_editar_no_choca_consigo_mismo(self):
+        self.assertEqual(self.alta("DUP-5", "77005", "Lucía Fernanda Ortega").status_code, 200)
+        self.assertEqual(self.alta("DUP-6", "77006", "Mateo Quiroz Salas").status_code, 200)
+        base = {"matricula_clave": "77005", "tipo": "docente", "carrera": ISC, "grupo_id": None, "estado": "activo"}
+        r = C.put("/api/users/DUP-5", headers=self.A, json={**base, "id": "DUP-5", "nombre_completo": "Lucía Fernanda Ortega"})
+        self.assertEqual(r.status_code, 200, r.text)
+        r = C.put("/api/users/DUP-5", headers=self.A, json={**base, "id": "DUP-5", "nombre_completo": "Mateo Quiroz Salas"})
+        self.assertEqual(r.status_code, 400)
+        r = C.put("/api/users/DUP-5", headers=self.A, json={**base, "id": "DUP-5", "matricula_clave": "77006",
+                                                             "nombre_completo": "Lucía Fernanda Ortega"})
+        self.assertEqual(r.status_code, 400)
 
 
 class TestRestablecerPassword(Base):

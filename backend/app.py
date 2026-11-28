@@ -26,7 +26,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from database.database import get_connection, init_db, periodo_siguiente
 from backend.mailer import send_email, smtp_configured
-from backend.validaciones import normalizar_nombre, normalizar_matricula
+from backend.validaciones import normalizar_nombre, normalizar_matricula, nombres_parecidos, clave_comparable
 from backend.horarios_import import validar_horario, leer_archivo, generar_plantilla, cargar_materias
 from backend.auth import (
     hash_password, verify_password, needs_rehash, create_session,
@@ -646,10 +646,15 @@ def register_account(payload: RegisterRequest, request: Request):
         cursor.execute("SELECT id FROM usuarios WHERE correo = ?", (correo,))
         if cursor.fetchone():
             raise HTTPException(status_code=409, detail="Este correo ya tiene una cuenta. Inicie sesión.")
-        cursor.execute("SELECT password_hash, correo FROM usuarios WHERE matricula_clave = ?", (matricula,))
+        cursor.execute("SELECT id, password_hash, correo FROM usuarios WHERE matricula_clave = ?", (matricula,))
         existente = cursor.fetchone()
         if existente and (existente["password_hash"] or existente["correo"]):
             raise HTTPException(status_code=409, detail="Esta matrícula o clave ya tiene una cuenta. Inicie sesión o contacte al administrador.")
+        # Si el administrador ya lo había dado de alta con esa matrícula, se vincula; si no, no puede repetir nombre ni clave
+        try:
+            _rechazar_duplicado(cursor, nombre, matricula, excluir_id=existente["id"] if existente else None)
+        except HTTPException as e:
+            raise HTTPException(status_code=409, detail=e.detail + " Si eres tú, pide al administrador que revise tu registro.")
 
         # Una sola solicitud vigente por correo y por matrícula
         cursor.execute("DELETE FROM registros_pendientes WHERE correo = ? OR matricula_clave = ? OR expira < ?",
@@ -2901,6 +2906,24 @@ def _validar_usuario(payload: UserCreate, cursor, clave_actual: str | None = Non
             )
     return datos
 
+_TIPO_TEXTO = {"alumno": "el alumno", "docente": "el docente", "personal_limpieza": "el trabajador"}
+
+
+def _rechazar_duplicado(cursor, nombre: str, matricula: str, excluir_id: str = None, revisar_nombre: bool = True):
+    """Dos personas no pueden tener la misma matrícula / número de empleado ni llamarse igual (o casi igual)."""
+    clave = clave_comparable(matricula)
+    for r in cursor.execute("SELECT id, nombre_completo, matricula_clave, tipo FROM usuarios").fetchall():
+        if r["id"] == excluir_id:
+            continue
+        quien = f"{_TIPO_TEXTO.get(r['tipo'], 'el usuario')} {r['nombre_completo']} ({r['matricula_clave']})"
+        if clave and clave_comparable(r["matricula_clave"]) == clave:
+            raise HTTPException(status_code=400, detail=f"Esa matrícula / número de empleado ya es de {quien}.")
+        if revisar_nombre and nombres_parecidos(nombre, r["nombre_completo"]):
+            raise HTTPException(status_code=400, detail=(
+                f"Ya existe {quien} con un nombre igual o muy parecido. Dos personas no pueden llamarse igual: "
+                "si es la misma persona, edita su registro en lugar de crear otro."))
+
+
 def _exigir_docente_propio(admin: dict, cursor, user_id: str):
     """El jefe de carrera solo administra docentes de sus carreras."""
     if admin.get("rol") != "jefe_carrera":
@@ -2925,6 +2948,7 @@ def create_user(payload: UserCreate, admin: dict = Depends(get_current_staff)):
         cursor.execute("SELECT id FROM usuarios WHERE id = ? OR matricula_clave = ?", (d["id"], d["matricula_clave"]))
         if cursor.fetchone():
             raise HTTPException(status_code=400, detail="El ID o la matrícula/clave ya existen.")
+        _rechazar_duplicado(cursor, d["nombre_completo"], d["matricula_clave"])
         try:
             cursor.execute("""
             INSERT INTO usuarios (id, nombre_completo, tipo, matricula_clave, carrera, grupo_id, estado, password_hash)
@@ -2944,13 +2968,16 @@ def update_user(user_id: str, payload: UserCreate, admin: dict = Depends(get_cur
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        actual = cursor.execute("SELECT tipo, estado, matricula_clave FROM usuarios WHERE id = ?", (user_id,)).fetchone()
+        actual = cursor.execute("SELECT tipo, estado, matricula_clave, nombre_completo FROM usuarios WHERE id = ?", (user_id,)).fetchone()
         if not actual:
             raise HTTPException(status_code=404, detail="Usuario no encontrado.")
         d = _validar_usuario(payload, cursor, actual["matricula_clave"])
         cursor.execute("SELECT 1 FROM usuarios WHERE matricula_clave = ? AND id <> ?", (d["matricula_clave"], user_id))
         if cursor.fetchone():
             raise HTTPException(status_code=400, detail="Esa matrícula/clave ya pertenece a otro usuario.")
+        # El nombre solo se revisa si cambió (así se pueden corregir otros datos de registros viejos)
+        _rechazar_duplicado(cursor, d["nombre_completo"], d["matricula_clave"], excluir_id=user_id,
+                            revisar_nombre=d["nombre_completo"] != actual["nombre_completo"])
         try:
             cursor.execute("""
             UPDATE usuarios
