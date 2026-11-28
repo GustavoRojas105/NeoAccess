@@ -50,3 +50,6 @@ __pycache__/
 
 # Estado local del simulador de puerta
 tools/simulador_datos/
+
+# Simulador contra el servidor en línea (config.json con token)
+tools/simulador_servidor_datos/

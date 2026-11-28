@@ -9,6 +9,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     NEOACCESS_DB_PATH=/datos/neoaccess.db \
     TZ=America/Mexico_City
 
+# Zona horaria real: los horarios de acceso se deciden con la hora de México
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
