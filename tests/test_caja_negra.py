@@ -480,6 +480,89 @@ class TestEntrarConCorreoYEspacios(Base):
             poner_clave("AL-1")
 
 
+class TestJefeAsignaAlumnos(Base):
+    """Issue #1: el jefe de carrera mete y saca alumnos de los grupos de su carrera, en bloque."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        base = {"tipo": "alumno", "estado": "activo", "grupo_id": None}
+        for uid, mat, nombre, carrera in (("AG-1", "230118001", "Ana Grupo", ISC), ("AG-2", "230118002", "Beto Grupo", ISC),
+                                          ("AG-CIV", "230118003", "Ciro Civil", CIV)):
+            C.post("/api/users", headers=cls.A, json={**base, "id": uid, "matricula_clave": mat,
+                                                      "nombre_completo": nombre, "carrera": carrera})
+        C.post("/api/groups", headers=cls.A, json={"id": "ISC-AG", "nombre": "Grupo Asignación", "carrera": ISC, "semestre": 3})
+        C.post("/api/groups", headers=cls.A, json={"id": "CIV-AG", "nombre": "Civil Asignación", "carrera": CIV, "semestre": 3})
+        from _entorno import bd
+        c = bd()
+        c.execute("""INSERT OR IGNORE INTO grupos (id, nombre, carrera, semestre, periodo_id, clave)
+                     VALUES ('ISC-VIEJO', 'Grupo cerrado', ?, 3, '2019-1', 'ISC-VIEJO')""", (ISC,))
+        c.commit()
+        c.close()
+
+    def asignar(self, gid, H=None, **cuerpo):
+        return C.put(f"/api/groups/{gid}/alumnos", headers=H or self.J, json=cuerpo)
+
+    def test_jefe_asigna_en_bloque_y_queda_en_bitacora(self):
+        r = self.asignar("ISC-AG", agregar=["AG-1", "AG-2"])
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual((r.json()["cambios"], r.json()["alumnos"]), (2, 2))
+        g = C.get("/api/groups/ISC-AG/alumnos", headers=self.J).json()
+        self.assertEqual(sorted(a["id"] for a in g["alumnos"]), ["AG-1", "AG-2"])
+        r = self.asignar("ISC-AG", quitar=["AG-2"])
+        self.assertEqual(r.json()["alumnos"], 1)
+        bit = C.get("/api/asignaciones-grupo", headers=self.A, params={"grupo_id": "ISC-AG"}).json()
+        self.assertEqual([(b["usuario_id"], b["grupo_nuevo"], b["actor_rol"]) for b in bit][:3],
+                         [("AG-2", None, "jefe_carrera"), ("AG-2", "ISC-AG", "jefe_carrera"), ("AG-1", "ISC-AG", "jefe_carrera")])
+        self.assertEqual(self.asignar("ISC-AG").status_code, 400)   # sin cambios
+
+    def test_otra_carrera_o_periodo_cerrado(self):
+        self.assertEqual(self.asignar("ISC-AG", agregar=["AG-CIV"]).status_code, 403)      # alumno de otra carrera
+        self.assertEqual(self.asignar("CIV-AG", agregar=["AG-1"]).status_code, 403)        # grupo de otra carrera
+        self.assertEqual(self.asignar("ISC-VIEJO", agregar=["AG-1"]).status_code, 400)     # periodo cerrado
+        self.assertEqual(self.asignar("ISC-AG", agregar=["DOC-ISC"]).status_code, 404)     # no es alumno
+        self.assertEqual(self.asignar("NO-EXISTE", agregar=["AG-1"]).status_code, 404)
+        # el administrador tampoco mezcla carreras: el alumno de Civil no entra a un grupo de Sistemas
+        self.assertEqual(self.asignar("ISC-AG", H=self.A, agregar=["AG-CIV"]).status_code, 400)
+        self.assertEqual(self.asignar("CIV-AG", H=self.A, agregar=["AG-CIV"]).status_code, 200)
+        self.assertEqual(self.asignar("ISC-AG", H=self.DO, agregar=["AG-1"]).status_code, 403)
+        self.assertEqual(self.asignar("ISC-AG", H=self.AL, agregar=["AG-1"]).status_code, 403)
+
+    def test_jefe_no_cambia_carrera_password_ni_estado(self):
+        datos = {"id": "AG-1", "nombre_completo": "Ana Grupo", "matricula_clave": "230118001", "tipo": "alumno",
+                 "carrera": CIV, "grupo_id": None, "estado": "activo", "password": "OtraClave2026"}
+        self.assertEqual(C.put("/api/users/AG-1", headers=self.J, json=datos).status_code, 403)
+        self.assertEqual(C.delete("/api/users/AG-1", headers=self.J).status_code, 403)
+        self.assertEqual(C.post("/api/accounts/usuario/AG-1/reset-password", headers=self.J).status_code, 403)
+
+    def test_lista_minima_sin_datos_privados(self):
+        lista = C.get("/api/jefe/alumnos", headers=self.J).json()
+        self.assertTrue(lista)
+        self.assertTrue(all(a["carrera"] == ISC for a in lista))
+        self.assertEqual(set(lista[0]), {"id", "matricula_clave", "nombre_completo", "carrera", "grupo_id", "grupo_clave"})
+        self.assertNotIn("AG-CIV", [a["id"] for a in lista])
+        self.assertEqual(C.get("/api/jefe/alumnos", headers=self.J, params={"carrera": CIV}).status_code, 403)
+        sin = C.get("/api/jefe/alumnos", headers=self.J, params={"sin_grupo": 1}).json()
+        self.assertTrue(all(a["grupo_id"] is None for a in sin))
+        self.assertEqual(C.get("/api/jefe/alumnos", headers=self.AL).status_code, 403)
+
+    def test_la_raspberry_ya_lo_ve_en_su_grupo(self):
+        from _entorno import bd
+        tok = sembrar()["token_rpi"]
+        C.post("/api/schedules", headers=self.A, json={
+            "grupo_id": "ISC-AG", "laboratorio_id": "LAB-RED", "docente_id": "DOC-ISC",
+            "materia": "Programación Web", "dia_semana": "Lunes", "hora_inicio": "20:00", "hora_fin": "21:00"})
+        c = bd()
+        c.execute("INSERT OR REPLACE INTO metadatos_faciales (usuario_id, vector_encoding) VALUES ('AG-1', '[0.1, 0.2]')")
+        c.commit()
+        c.close()
+        self.asignar("ISC-AG", agregar=["AG-1"])
+        r = C.get("/api/iot/sync-offline-rules", headers={"X-Device-Token": tok}, params={"dispositivo_id": "RPI-RED"}).json()
+        al = [u for u in r["usuarios"] if u["usuario_id"] == "AG-1"]
+        self.assertEqual(al[0]["grupo_id"], "ISC-AG")
+        self.assertTrue(any(h["grupo_id"] == "ISC-AG" for h in r["horarios"]))
+
+
 class TestRestablecerPassword(Base):
     """El administrador da una contraseña temporal; al entrar se obliga a cambiarla."""
 

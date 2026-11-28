@@ -17,10 +17,10 @@ Cada tipo corre en un proceso aparte con una **base de datos temporal nueva**. L
 | Tipo | Archivo | Pruebas | Resultado |
 |---|---|---|---|
 | Caja blanca | `test_caja_blanca.py` | 46 | ✅ 46 pasan |
-| Caja negra (API) | `test_caja_negra.py` | 66 | ✅ 66 pasan |
+| Caja negra (API) | `test_caja_negra.py` | 71 | ✅ 71 pasan |
 | Caja gris | `test_caja_gris.py` | 19 | ✅ 19 pasan |
 | Caja negra (interfaz) | navegador, manual asistida | 9 escenarios | ✅ todos correctos |
-| **Total automatizadas** | | **131** | **✅ 131 pasan** |
+| **Total automatizadas** | | **136** | **✅ 136 pasan** |
 
 Muchas pruebas usan `subTest` con tablas de casos. En total se revisan **más de 200 combinaciones** de entrada.
 
@@ -82,6 +82,7 @@ Se recorren las ramas de cada función interna:
 - **Códigos por correo** (correo simulado): solo `@itsoeh.edu.mx`; registro con código de 6 dígitos (ya no enlace); 5 intentos y el código queda inválido; reenviar da uno nuevo; código vencido; docente queda pendiente; recuperar contraseña con respuesta igual exista o no la cuenta, mínimo 8 caracteres, código de un solo uso y cierre de sesiones abiertas.
 - **Pase de lista del docente**: Excel con la hora de entrada y "Presente", PDF de una clase, día sin clases (404), fecha mal escrita (400), formato inválido (422); alumno y administrador no pueden bajarlo y un docente no puede bajar la clase de otro.
 - **Login con Google** (Google simulado): entra la cuenta existente sin importar mayúsculas; se rechaza Gmail, otro dominio, otro ID de cliente, correo sin verificar y token vencido; un correo sin cuenta pide registrarse; sin ID de cliente el botón no aparece.
+- **Jefe asigna alumnos a grupos (issue #1)**: en bloque, solo alumnos de sus carreras y grupos del periodo activo (otra carrera 403, periodo cerrado 400); no cambia carrera, contraseña ni estado; la lista no trae datos privados; cada cambio queda en la bitácora y la Raspberry ya ve al alumno en su grupo al sincronizar.
 - **Restablecer contraseña**: solo el administrador da una contraseña temporal (a alumnos, docentes, personal, jefes y otros administradores, no a sí mismo); se cierran las sesiones abiertas y la anterior deja de servir; con la temporal solo se puede crear una nueva (todo lo demás responde 403), que debe ser distinta; después todo funciona con la misma sesión.
 - **Carga académica del SEIT**: se lee la carga copiada (ejemplo real de 7.º semestre, con y sin espacios), se liga a las clases de laboratorio por docente, día y hora; avisa las que no coinciden y las de salón normal; rechaza la carga de otra matrícula; el alumno inscrito aparte aparece en su horario y en el pase de lista; el docente agrega o quita alumnos de su materia (todas las sesiones de la semana) y nadie más puede; la Raspberry deja pasar al alumno inscrito aparte.
 - **Formas de entrar**: con la matrícula, con el ID o con el correo institucional (sin importar mayúsculas ni espacios alrededor); la contraseña se compara tal cual y, si el celular agrega un espacio al final, también entra; una contraseña distinta se rechaza.

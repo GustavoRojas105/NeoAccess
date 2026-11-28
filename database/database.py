@@ -281,6 +281,22 @@ def init_db():
         if cols and "debe_cambiar_password" not in cols:
             cursor.execute(f"ALTER TABLE {tabla} ADD COLUMN debe_cambiar_password INTEGER NOT NULL DEFAULT 0;")
 
+    # 13c. Bitácora: quién metió o sacó a un alumno de un grupo (asignar un grupo da acceso físico)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS asignaciones_grupo (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fecha TEXT DEFAULT (datetime('now', 'localtime')),
+        actor_rol TEXT NOT NULL,
+        actor_id TEXT,
+        actor_nombre TEXT,
+        usuario_id TEXT NOT NULL,
+        matricula TEXT,
+        grupo_anterior TEXT,
+        grupo_nuevo TEXT
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_asignaciones_grupo_usuario ON asignaciones_grupo (usuario_id);")
+
     # 13b. Alumnos inscritos a clases fuera de su grupo (carga académica del SEIT o agregados por el docente)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS inscripciones_clase (

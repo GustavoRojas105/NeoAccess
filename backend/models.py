@@ -10,6 +10,11 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
+class GrupoAlumnosUpdate(BaseModel):
+    """Asignación en bloque: IDs de alumnos que entran o salen del grupo."""
+    agregar: List[str] = Field(default_factory=list, max_length=500)
+    quitar: List[str] = Field(default_factory=list, max_length=500)
+
 class NuevaPasswordRequest(BaseModel):
     """Contraseña nueva al entrar con una temporal."""
     nueva: str = Field(..., min_length=8, max_length=128)

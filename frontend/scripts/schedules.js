@@ -191,6 +191,9 @@ async function loadGroupsTable() {
         <td class="px-4 py-3 text-slate-600">${esc(g.semestre)}°</td>
         <td class="px-4 py-3 text-slate-600">${esc(g.alumnos ?? 0)}</td>
         <td class="px-4 py-3 text-right whitespace-nowrap">
+          <button onclick='abrirAlumnosDeGrupo(${JSON.stringify({ id: g.id, clave: g.clave || g.id, nombre: g.nombre, carrera: g.carrera }).replace(/'/g, "&#39;")})' class="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-slate-700 border border-slate-300 hover:bg-slate-50 rounded-lg transition" title="Asignar alumnos a este grupo">
+            <i data-lucide="users" class="w-3.5 h-3.5"></i> Alumnos
+          </button>
           <button onclick='editGroup(${JSON.stringify({ id: g.id, nombre: g.nombre, carrera: g.carrera, semestre: g.semestre }).replace(/'/g, "&#39;")})' class="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded transition" title="Editar grupo">
             <i data-lucide="pencil" class="w-4 h-4"></i>
           </button>

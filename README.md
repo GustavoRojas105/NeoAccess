@@ -165,10 +165,11 @@ Desde el Dashboard → menú lateral → **Administradores**:
 El administrador los crea en **Administradores → Jefes de carrera** y les asigna **una o varias carreras**. Entran con su usuario en el mismo login y ven un Dashboard reducido, **solo con datos de sus carreras**:
 
 - **Horarios y Grupos:** crear y editar grupos, descargar la plantilla de Excel (ya filtrada a sus grupos y materias), importar horarios o agregarlos uno por uno.
+- **Alumnos de cada grupo:** con el botón **Alumnos** de cada grupo marcan en bloque quién entra o sale (solo alumnos de sus carreras y grupos del periodo activo). Solo ven matrícula, nombre, carrera y grupo. Cada cambio queda en una bitácora con quién lo hizo y cuándo.
 - **Docentes:** registrar docentes de su carrera y **darlos de baja** (o reactivarlos). No pueden eliminar definitivamente: el docente queda en el histórico.
 - **Reportes:** accesos de sus carreras, con búsqueda por nombre/matrícula y por periodo.
 
-No ven alumnos, dispositivos, laboratorios, métricas, administradores ni el modo mantenimiento. El registro de rostros lo hace el administrador. Si se les cambian las carreras o se les desactiva, su sesión se cierra en ese momento.
+No ven el padrón completo de alumnos (rostro, historial, contraseñas), dispositivos, laboratorios, métricas, administradores ni el modo mantenimiento. El registro de rostros lo hace el administrador. Si se les cambian las carreras o se les desactiva, su sesión se cierra en ese momento.
 
 ## 🗓️ Periodos Escolares e Histórico
 
@@ -176,7 +177,7 @@ El sistema trabaja por semestres **Ene–Jun** y **Ago–Dic**. Grupos, horarios
 
 En **Periodos e Histórico** (solo administrador):
 
-- **Cerrar periodo y abrir el siguiente** (pide confirmar dos veces): nada se borra. Se guarda qué alumno estaba en qué grupo, los grupos y horarios pasan al histórico (solo lectura) y las puertas dejan de usarlos. Los alumnos quedan sin grupo hasta que se les asigne uno del nuevo periodo, y los jefes de carrera suben los horarios nuevos.
+- **Cerrar periodo y abrir el siguiente** (pide confirmar dos veces): nada se borra. Se guarda qué alumno estaba en qué grupo, los grupos y horarios pasan al histórico (solo lectura) y las puertas dejan de usarlos. Los alumnos quedan sin grupo hasta que se les asigne uno del nuevo periodo: los jefes de carrera suben los horarios nuevos y meten a los alumnos en sus grupos.
 - **Consultar** cualquier periodo: sus grupos, horarios y accesos (en Reportes, filtrando por periodo y buscando por nombre o matrícula).
 - En el detalle de cada alumno aparece su **historial académico** (grupo de cada periodo).
 

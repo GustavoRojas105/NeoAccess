@@ -34,7 +34,7 @@ from backend.auth import (
     login_locked_seconds, register_failed_login, reset_failed_logins
 )
 from backend.models import (
-    LoginRequest, GoogleLoginRequest, NuevaPasswordRequest, CargaAcademicaRequest, InscribirAlumnoRequest, RegisterRequest, AdminCreate, PasswordChange, JefeCreate, JefeCarreras, GroupUpdate, ResendVerificationRequest, VerifyCodeRequest, PasswordResetRequest, MaintenancePayload, LabCreate, LabUpdate, DeviceCreate, GroupCreate,
+    LoginRequest, GoogleLoginRequest, NuevaPasswordRequest, GrupoAlumnosUpdate, CargaAcademicaRequest, InscribirAlumnoRequest, RegisterRequest, AdminCreate, PasswordChange, JefeCreate, JefeCarreras, GroupUpdate, ResendVerificationRequest, VerifyCodeRequest, PasswordResetRequest, MaintenancePayload, LabCreate, LabUpdate, DeviceCreate, GroupCreate,
     UserCreate, FacialMetadataCreate, FacialCapturePayload, ScheduleCreate,
     HeartbeatPayload, AccessAttemptPayload, CleaningPayload, CommandAckPayload
 )
@@ -2451,6 +2451,128 @@ def update_group(group_id: str, payload: GroupUpdate, admin: dict = Depends(get_
     finally:
         conn.close()
     return {"success": True, "message": f"Grupo {group_id} actualizado."}
+
+# -------------------------------------------------------------
+# ALUMNOS DE CADA GRUPO (administrador o jefe de carrera, en bloque)
+# El jefe solo ve matrícula, nombre, carrera y grupo de los alumnos de sus carreras.
+# No cambia carrera, contraseña, estado ni rostro: eso sigue siendo del administrador.
+# -------------------------------------------------------------
+_CAMPOS_ALUMNO_MINIMOS = """u.id, u.matricula_clave, u.nombre_completo, u.carrera, u.grupo_id,
+                           COALESCE(g.clave, u.grupo_id) AS grupo_clave"""
+
+
+@app.get("/api/jefe/alumnos")
+def alumnos_para_asignar(carrera: Optional[str] = None, sin_grupo: bool = False, staff: dict = Depends(get_current_staff)):
+    permitidas = carreras_de(staff)
+    if carrera:
+        exigir_carrera(staff, carrera, "alumnos de esa carrera")
+    conn = get_connection()
+    try:
+        filtros, params = ["u.tipo = 'alumno'", "u.estado = 'activo'"], []
+        if carrera:
+            filtros.append("u.carrera = ?")
+            params.append(carrera)
+        elif permitidas is not None:
+            if not permitidas:
+                return []
+            filtros.append(f"u.carrera IN ({','.join('?' * len(permitidas))})")
+            params += permitidas
+        if sin_grupo:
+            filtros.append("u.grupo_id IS NULL")
+        filas = conn.execute(f"""SELECT {_CAMPOS_ALUMNO_MINIMOS} FROM usuarios u LEFT JOIN grupos g ON g.id = u.grupo_id
+                                 WHERE {' AND '.join(filtros)} ORDER BY u.nombre_completo COLLATE NOCASE""", params).fetchall()
+        return [dict(r) for r in filas]
+    finally:
+        conn.close()
+
+
+def _grupo_editable(cursor, staff: dict, group_id: str):
+    grupo = cursor.execute("SELECT * FROM grupos WHERE id = ?", (group_id,)).fetchone()
+    if not grupo:
+        raise HTTPException(status_code=404, detail="Grupo no encontrado.")
+    if grupo["periodo_id"] != periodo_activo(cursor)["id"]:
+        raise HTTPException(status_code=400, detail="Los grupos de periodos cerrados son histórico y no se modifican.")
+    exigir_carrera(staff, grupo["carrera"], "este grupo")
+    return grupo
+
+
+@app.get("/api/groups/{group_id}/alumnos")
+def alumnos_del_grupo(group_id: str, staff: dict = Depends(get_current_staff)):
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        grupo = cursor.execute("SELECT * FROM grupos WHERE id = ?", (group_id,)).fetchone()
+        if not grupo:
+            raise HTTPException(status_code=404, detail="Grupo no encontrado.")
+        exigir_carrera(staff, grupo["carrera"], "este grupo")
+        filas = cursor.execute(f"""SELECT {_CAMPOS_ALUMNO_MINIMOS} FROM usuarios u LEFT JOIN grupos g ON g.id = u.grupo_id
+                                   WHERE u.tipo = 'alumno' AND u.grupo_id = ?
+                                   ORDER BY u.nombre_completo COLLATE NOCASE""", (group_id,)).fetchall()
+        return {"grupo": dict(grupo), "alumnos": [dict(r) for r in filas]}
+    finally:
+        conn.close()
+
+
+@app.put("/api/groups/{group_id}/alumnos")
+def asignar_alumnos_al_grupo(group_id: str, payload: GrupoAlumnosUpdate, staff: dict = Depends(get_current_staff)):
+    agregar = list(dict.fromkeys(i.strip() for i in payload.agregar if i and i.strip()))
+    quitar = [i for i in dict.fromkeys(q.strip() for q in payload.quitar if q and q.strip()) if i not in agregar]
+    if not agregar and not quitar:
+        raise HTTPException(status_code=400, detail="No hay cambios que guardar.")
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        grupo = _grupo_editable(cursor, staff, group_id)
+        alumnos = {}
+        for uid in agregar + quitar:
+            a = cursor.execute("SELECT id, tipo, carrera, grupo_id, matricula_clave, nombre_completo FROM usuarios WHERE id = ?",
+                               (uid,)).fetchone()
+            if not a or a["tipo"] != "alumno":
+                raise HTTPException(status_code=404, detail=f"El alumno {uid} no existe.")
+            exigir_carrera(staff, a["carrera"], f"al alumno {a['matricula_clave']}")
+            if uid in agregar and a["carrera"] and a["carrera"] != grupo["carrera"]:
+                raise HTTPException(status_code=400, detail=(
+                    f"{a['nombre_completo']} es de {a['carrera']}; el grupo {group_id} es de {grupo['carrera']}."))
+            alumnos[uid] = a
+        actor = (staff.get("rol"), str(staff.get("user_id")), staff.get("nombre"))
+        cambios = 0
+        for uid in agregar:
+            a = alumnos[uid]
+            if a["grupo_id"] == group_id:
+                continue
+            cursor.execute("UPDATE usuarios SET grupo_id = ? WHERE id = ?", (group_id, uid))
+            cursor.execute("""INSERT INTO asignaciones_grupo (actor_rol, actor_id, actor_nombre, usuario_id, matricula, grupo_anterior, grupo_nuevo)
+                              VALUES (?, ?, ?, ?, ?, ?, ?)""", (*actor, uid, a["matricula_clave"], a["grupo_id"], group_id))
+            cambios += 1
+        for uid in quitar:
+            a = alumnos[uid]
+            if a["grupo_id"] != group_id:
+                continue
+            cursor.execute("UPDATE usuarios SET grupo_id = NULL WHERE id = ?", (uid,))
+            cursor.execute("""INSERT INTO asignaciones_grupo (actor_rol, actor_id, actor_nombre, usuario_id, matricula, grupo_anterior, grupo_nuevo)
+                              VALUES (?, ?, ?, ?, ?, ?, NULL)""", (*actor, uid, a["matricula_clave"], group_id))
+            cambios += 1
+        conn.commit()
+        total = cursor.execute("SELECT COUNT(*) FROM usuarios WHERE grupo_id = ? AND tipo = 'alumno'", (group_id,)).fetchone()[0]
+    finally:
+        conn.close()
+    return {"success": True, "cambios": cambios, "alumnos": total,
+            "message": f"Grupo {grupo['clave'] or group_id}: {cambios} cambio(s) guardado(s); ahora tiene {total} alumno(s)."}
+
+
+@app.get("/api/asignaciones-grupo")
+def bitacora_asignaciones(grupo_id: Optional[str] = None, staff: dict = Depends(get_current_staff)):
+    """Quién metió o sacó a cada alumno de un grupo (el jefe solo ve los grupos de sus carreras)."""
+    conn = get_connection()
+    try:
+        filas = conn.execute("""
+            SELECT b.*, u.nombre_completo, u.carrera FROM asignaciones_grupo b LEFT JOIN usuarios u ON u.id = b.usuario_id
+            WHERE (? IS NULL OR b.grupo_anterior = ? OR b.grupo_nuevo = ?)
+            ORDER BY b.id DESC LIMIT 300""", (grupo_id, grupo_id, grupo_id)).fetchall()
+        permitidas = carreras_de(staff)
+        return [dict(r) for r in filas if permitidas is None or r["carrera"] in permitidas]
+    finally:
+        conn.close()
 
 # -------------------------------------------------------------
 # PERIODOS ESCOLARES (Ene-Jun / Ago-Dic) Y JEFES DE CARRERA
