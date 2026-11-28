@@ -8,13 +8,14 @@ Es la versión "de internet" de tools/simulador_puerta.py (que sigue igual, para
     (YuNet + SFace). La imagen solo vive en memoria; al servidor solo llega el resultado.
   - También se puede elegir a una persona de la lista (sin cámara) para demostraciones.
 
-Preparación (una vez, en el panel del servidor):
-  Dispositivos -> Agregar -> ID p. ej. SIM-LCS (con SIM- se distingue de las puertas reales)
-  -> Vincular -> Descargar config.json. Al abrir el simulador se pega o se elige ese archivo.
+Como el simulador local: eliges el laboratorio y la puerta SIM-<LAB> se crea sola en el servidor.
+Para eso se entra una vez con un usuario ADMINISTRADOR del servidor (la contraseña no se guarda:
+solo se usa la sesión, en memoria, para dar de alta la puerta y bajar su config.json).
+También se puede pegar a mano el config.json de una puerta (Dispositivos -> Vincular).
 
 Uso:
     python tools\\simulador_servidor.py            (o doble clic en run_simulador_servidor.bat)
-Opciones: --config RUTA  --puerto 8030  --camara 0  --sin-navegador
+Opciones: --servidor https://stem.itsoeh.edu.mx  --config RUTA  --puerto 8030  --sin-navegador
 """
 import argparse
 import base64
@@ -23,6 +24,8 @@ import os
 import sys
 import threading
 import webbrowser
+
+import requests
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -52,9 +55,15 @@ def validar_config(datos) -> dict:
     return datos
 
 
+PREFIJO = "SIM-"
+
+
 class SimuladorServidor:
-    def __init__(self, config_path):
+    def __init__(self, config_path, servidor=SERVIDOR_DEFECTO):
         self.config_path = config_path
+        self.servidor = servidor.rstrip("/")
+        self.admin = None          # {"token", "nombre"} solo en memoria
+        self.labs = []
         self.nodo = None
         self.motor = None
         self.error_motor = None
@@ -94,6 +103,71 @@ class SimuladorServidor:
             nodo.start_heartbeat_thread()
             nodo.start_command_thread()
             self.nodo = nodo
+
+    # ---------- Panel del servidor (como administrador) ----------
+    def _api(self, metodo, ruta, **kw):
+        if not self.admin:
+            raise PermissionError("Entra con tu usuario de administrador del servidor.")
+        try:
+            r = requests.request(metodo, f"{self.servidor}{ruta}", timeout=15,
+                                 headers={"Authorization": f"Bearer {self.admin['token']}"}, **kw)
+        except requests.RequestException:
+            raise ValueError(f"No se pudo conectar con {self.servidor}. Revisa el internet.")
+        if r.status_code == 401:
+            self.admin = None
+            raise PermissionError("La sesión del servidor expiró: vuelve a entrar.")
+        if not r.ok:
+            try:
+                detalle = r.json().get("detail")
+            except ValueError:
+                detalle = r.text[:200]
+            raise ValueError(f"El servidor respondió {r.status_code}: {detalle}")
+        return r.json()
+
+    def entrar(self, servidor, usuario, password):
+        servidor = (servidor or self.servidor).strip().rstrip("/")
+        if not servidor.startswith(("http://", "https://")):
+            servidor = "https://" + servidor
+        try:
+            r = requests.post(f"{servidor}/api/auth/login", json={"username": usuario, "password": password}, timeout=15)
+        except requests.RequestException:
+            raise ValueError(f"No se pudo conectar con {servidor}. Revisa la dirección y el internet.")
+        datos = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+        if r.status_code != 200:
+            raise ValueError(datos.get("detail") or f"El servidor respondió {r.status_code}.")
+        info = datos.get("admin") or {}
+        if info.get("rol") != "administrador":
+            raise ValueError("Se necesita una cuenta de ADMINISTRADOR para dar de alta la puerta simulada.")
+        if info.get("debe_cambiar_password"):
+            raise ValueError("Esa cuenta debe cambiar su contraseña: entra primero al panel web y cámbiala.")
+        self.servidor = servidor
+        self.admin = {"token": datos["token"], "nombre": info.get("nombre") or usuario}
+        self.cargar_labs()
+        return {"ok": True, "laboratorios": self.labs}
+
+    def cargar_labs(self):
+        self.labs = [{"id": l["id"], "nombre": l["nombre"]} for l in self._api("GET", "/api/labs")]
+        return self.labs
+
+    def usar_laboratorio(self, lab_id):
+        """Crea (una vez) la puerta SIM-<LAB> en el servidor, baja su config.json y la enciende."""
+        if not self.admin:
+            raise PermissionError("Entra con tu usuario de administrador del servidor para cambiar de laboratorio.")
+        lab =next((l for l in self.labs if l["id"] == lab_id), None)
+        if not lab:
+            raise ValueError(f"No existe el laboratorio {lab_id}.")
+        dev_id = f"{PREFIJO}{lab_id}"
+        existe = next((d for d in self._api("GET", "/api/devices") if d["id"] == dev_id), None)
+        if not existe:
+            self._api("POST", "/api/devices", json={
+                "id": dev_id, "laboratorio_id": lab_id, "nombre": f"Simulador de puerta - {lab['nombre']}",
+                "ip_address": "127.0.0.1", "mac_address": None, "intervalo_latido_seg": INTERVALO_LATIDO})
+        elif not existe.get("activo"):
+            raise ValueError(f"La puerta {dev_id} está desactivada en el panel del servidor. Actívala y vuelve a intentar.")
+        cfg = self._api("GET", f"/api/devices/{dev_id}/config-file")
+        cfg["laboratorio_nombre"] = lab["nombre"]
+        cfg["servidor_url"] = self.servidor   # la misma dirección con la que esta PC ya llegó al servidor
+        self.encender(validar_config(cfg))
 
     def preparar_motor(self):
         if self.motor or self.error_motor:
@@ -145,14 +219,17 @@ class SimuladorServidor:
 
     def estado(self):
         n = self.nodo
+        base = {"servidor_panel": self.servidor, "admin": self.admin["nombre"] if self.admin else None,
+                "laboratorios": self.labs}
         if not n:
-            return {"configurado": False, "servidor_sugerido": SERVIDOR_DEFECTO}
+            return {**base, "configurado": False}
         import time
         ahora = time.time()
         horarios = sorted(n.offline_cache.get("horarios", []),
                           key=lambda h: (DIAS.index(h["dia_semana"]) if h["dia_semana"] in DIAS else 9, h["hora_inicio"]))
         return {
-            "configurado": True, "dispositivo_id": n.device_id,
+            **base, "configurado": True, "dispositivo_id": n.device_id,
+            "laboratorio_nombre": n.config.get("laboratorio_nombre") or "",
             "laboratorio": n.offline_cache.get("laboratorio_id") or n.config.get("laboratorio_id") or "—",
             "servidor": n.url_real, "en_linea": bool(n.online and not n.sin_red), "sin_red": n.sin_red,
             "abierta": n.puerta["abierta_hasta"] > ahora,
@@ -210,6 +287,15 @@ def crear_handler(sim: SimuladorServidor):
                 return self._json({"error": "origen no permitido"}, 403)
             try:
                 datos = self._leer()
+                if self.path == "/api/entrar":
+                    return self._json(sim.entrar(datos.get("servidor"), str(datos.get("usuario") or "").strip(),
+                                                 str(datos.get("password") or "")))
+                if self.path == "/api/salir":
+                    sim.admin = None
+                    return self._json({"ok": True})
+                if self.path == "/api/laboratorio":
+                    sim.usar_laboratorio(datos.get("laboratorio"))
+                    return self._json({"ok": True})
                 if self.path == "/api/config":
                     texto = datos.get("texto") or ""
                     try:
@@ -240,6 +326,8 @@ def crear_handler(sim: SimuladorServidor):
                     self._json({"ok": ok})
                 else:
                     self._json({"error": "no encontrado"}, 404)
+            except PermissionError as e:
+                self._json({"error": str(e), "entrar": True}, 401)
             except (ValueError, RuntimeError) as e:
                 self._json({"error": str(e)}, 400)
             except Exception as e:
@@ -249,18 +337,19 @@ def crear_handler(sim: SimuladorServidor):
 
 def main():
     ap = argparse.ArgumentParser(description="Simulador de puerta NeoAccess contra el servidor en línea")
-    ap.add_argument("--config", default=CONFIG_DEFECTO, help="config.json descargado del panel del servidor")
+    ap.add_argument("--servidor", default=SERVIDOR_DEFECTO, help="dirección del servidor NeoAccess")
+    ap.add_argument("--config", default=CONFIG_DEFECTO, help="config.json de la puerta (se crea solo)")
     ap.add_argument("--puerto", type=int, default=8030)
     ap.add_argument("--sin-navegador", action="store_true")
     args = ap.parse_args()
 
-    sim = SimuladorServidor(os.path.abspath(args.config))
+    sim = SimuladorServidor(os.path.abspath(args.config), args.servidor)
     threading.Thread(target=sim.preparar_motor, daemon=True).start()
     srv = ThreadingHTTPServer(("127.0.0.1", args.puerto), crear_handler(sim))
     url = f"http://127.0.0.1:{args.puerto}"
     print("=" * 65)
     print(f"  Simulador (servidor en línea) listo en {url}")
-    print(f"  Puerta: {sim.nodo.device_id + ' -> ' + sim.nodo.server_url if sim.nodo else 'sin configurar (pega el config.json en la página)'}")
+    print(f"  Puerta: {sim.nodo.device_id + ' -> ' + sim.nodo.server_url if sim.nodo else 'sin configurar (entra como administrador en la página)'}")
     print("  Cierra esta ventana para apagar la puerta.")
     print("=" * 65)
     if not args.sin_navegador:

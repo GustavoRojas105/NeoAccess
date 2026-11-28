@@ -84,6 +84,12 @@
   #config-box { max-width:720px; margin:30px auto; }
   #config-box textarea { width:100%; min-height:170px; font-family:ui-monospace,Consolas,monospace; font-size:12px; padding:10px; border:1px solid #cbd5e1; border-radius:8px; margin-top:8px; }
   ol li { margin:4px 0; }
+  .form { display:grid; gap:10px; max-width:420px; }
+  .form label { display:grid; gap:4px; font-size:12px; color:var(--muted); font-weight:600; }
+  .form input { width:100%; }
+  .pass { display:flex; gap:6px; }
+  .pass input { flex:1; }
+  details summary { cursor:pointer; font-weight:600; font-size:12px; color:var(--muted); }
 
   /* Ventana de la cámara */
   .velo { position:fixed; inset:0; background:rgba(15,23,42,.7); display:none; align-items:center; justify-content:center; z-index:50; padding:16px; }
@@ -107,29 +113,58 @@
     <div class="sub">Hace lo mismo que la Raspberry Pi de la puerta, con la cámara de esta computadora, y todo se refleja en el servidor</div>
   </div>
   <div class="der">
+    <label class="sub" for="lab" id="lab-etq" style="display:none">Laboratorio</label>
+    <select id="lab" style="display:none"></select>
     <span class="puerta-chip" id="h-puerta">Sin puerta</span>
-    <button id="btn-cambiar" style="display:none">🔁 Cambiar puerta</button>
+    <button id="btn-cambiar" style="display:none">🔑 Cambiar laboratorio</button>
     <span id="chip-red" class="chip wait"><span class="p"></span><span>Conectando…</span></span>
   </div>
 </header>
 
 <!-- Sin configurar: pegar el config.json de la puerta (panel del servidor) -->
 <section id="config-box" class="card" style="display:none">
-  <h2>Conectar esta puerta simulada al servidor</h2>
-  <ol>
-    <li>Entra al panel del servidor (<code>https://stem.itsoeh.edu.mx</code>) como administrador.</li>
-    <li><b>Dispositivos → Agregar</b>: ID que empiece con <code>SIM-</code> (p. ej. <code>SIM-LCS</code>) y el laboratorio que quieras simular.</li>
-    <li>En esa puerta pulsa <b>Vincular</b> y descarga el <code>config.json</code>.</li>
-    <li>Elige el archivo aquí o pega su contenido:</li>
-  </ol>
-  <input type="file" id="config-archivo" accept=".json,application/json">
-  <textarea id="config-texto" placeholder='{"dispositivo_id": "SIM-LCS", "token_api": "...", "servidor_url": "https://stem.itsoeh.edu.mx", ...}'></textarea>
-  <div class="fila">
-    <button class="prim" id="btn-config">Conectar</button>
-    <button id="btn-config-cancelar" style="display:none">Cancelar</button>
-    <span id="config-error" style="color:var(--bad)"></span>
+  <h2>Conectar la puerta simulada al servidor</h2>
+
+  <!-- Paso 1: entrar como administrador -->
+  <div id="paso-entrar">
+    <p style="margin-top:0">Entra con tu <b>usuario de administrador del servidor</b>. Con eso el simulador crea solo su puerta
+      <code>SIM-&lt;LAB&gt;</code>, igual que el simulador local. La contraseña no se guarda.</p>
+    <div class="form">
+      <label>Servidor<input type="text" id="e-servidor" value="https://stem.itsoeh.edu.mx" autocomplete="off"></label>
+      <label>Usuario o correo<input type="text" id="e-usuario" autocomplete="username"></label>
+      <label>Contraseña
+        <span class="pass"><input type="password" id="e-password" autocomplete="current-password">
+          <button type="button" id="e-ojo" title="Mostrar u ocultar">👁</button></span></label>
+    </div>
+    <div class="fila">
+      <button class="prim" id="btn-entrar">Entrar</button>
+      <span id="entrar-error" style="color:var(--bad)"></span>
+    </div>
   </div>
-  <p class="nota">El config.json tiene el token de la puerta: se guarda solo en esta PC (tools/simulador_servidor_datos/, fuera de Git).</p>
+
+  <!-- Paso 2: elegir laboratorio -->
+  <div id="paso-lab" style="display:none">
+    <p style="margin-top:0">Hola, <b id="e-nombre"></b>. ¿Qué laboratorio quieres simular?</p>
+    <div class="fila">
+      <select id="lab-inicio" style="flex:1; min-width:240px"></select>
+      <button class="prim" id="btn-usar-lab">Conectar puerta</button>
+    </div>
+    <div class="nota" id="lab-error" style="color:var(--bad)"></div>
+    <p class="nota">Se crea la puerta <code>SIM-&lt;LAB&gt;</code> en el servidor (una sola vez). Lo simulado queda ligado a esa puerta, así se distingue de las reales.</p>
+  </div>
+
+  <div class="fila"><button id="btn-config-cancelar" style="display:none">Cancelar</button></div>
+
+  <details style="margin-top:12px">
+    <summary>¿No tienes cuenta de administrador? Pega el config.json de una puerta</summary>
+    <p class="nota">Pídeselo al administrador: Dispositivos → Vincular → config.json.</p>
+    <input type="file" id="config-archivo" accept=".json,application/json">
+    <textarea id="config-texto" placeholder='{"dispositivo_id": "SIM-LCS", "token_api": "...", "servidor_url": "https://stem.itsoeh.edu.mx", ...}'></textarea>
+    <div class="fila">
+      <button id="btn-config">Conectar con este config.json</button>
+      <span id="config-error" style="color:var(--bad)"></span>
+    </div>
+  </details>
 </section>
 
 <main id="principal" style="display:none">
@@ -390,6 +425,37 @@ $("tabs").onclick = e => {
 };
 
 // ---------- Conectar la puerta ----------
+function opcionesLabs(labs, actual) {
+  return labs.map(l => `<option value="${esc(l.id)}" ${l.id === actual ? "selected" : ""}>${esc(l.id)} · ${esc(l.nombre)}</option>`).join("");
+}
+$("e-ojo").onclick = () => { const i = $("e-password"); i.type = i.type === "password" ? "text" : "password"; };
+$("e-password").addEventListener("keydown", e => { if (e.key === "Enter") $("btn-entrar").click(); });
+$("btn-entrar").onclick = async () => {
+  $("entrar-error").textContent = "";
+  if (!$("e-usuario").value.trim() || !$("e-password").value) { $("entrar-error").textContent = "Escribe usuario y contraseña."; return; }
+  $("btn-entrar").disabled = true; $("btn-entrar").textContent = "Entrando…";
+  try {
+    await api("/api/entrar", { servidor: $("e-servidor").value, usuario: $("e-usuario").value, password: $("e-password").value });
+    $("e-password").value = "";
+    refrescar();
+  } catch (e) { $("entrar-error").textContent = e.message; }
+  finally { $("btn-entrar").disabled = false; $("btn-entrar").textContent = "Entrar"; }
+};
+async function usarLaboratorio(lab, boton) {
+  $("lab-error").textContent = "";
+  if (boton) { boton.disabled = true; boton.textContent = "Conectando…"; }
+  $("chip-red").lastElementChild.textContent = "Cambiando…";
+  try {
+    await api("/api/laboratorio", { laboratorio: lab });
+    CAMBIANDO = false; ROSTROS = -1; $("resultado").className = "resultado"; refrescar();
+  } catch (e) {
+    $("lab-error").textContent = e.message;
+    if (!$("config-box").offsetParent) alert("No se pudo cambiar: " + e.message);
+    refrescar();
+  } finally { if (boton) { boton.disabled = false; boton.textContent = "Conectar puerta"; } }
+}
+$("btn-usar-lab").onclick = e => usarLaboratorio($("lab-inicio").value, e.target);
+$("lab").onchange = e => usarLaboratorio(e.target.value);
 $("config-archivo").onchange = async e => { const f = e.target.files[0]; if (f) $("config-texto").value = await f.text(); };
 $("btn-config").onclick = async () => {
   $("config-error").textContent = "";
@@ -408,10 +474,29 @@ function pintarEstado(s) {
   $("config-box").style.display = verConfig ? "block" : "none";
   $("principal").style.display = verConfig ? "none" : "grid";
   $("btn-config-cancelar").style.display = s.configurado ? "" : "none";
-  $("btn-cambiar").style.display = s.configurado && !CAMBIANDO ? "" : "none";
+  // con sesión de administrador: selector de laboratorio arriba (como el simulador local)
+  const conLabs = !!s.admin && s.laboratorios.length > 0;
+  $("paso-entrar").style.display = s.admin ? "none" : "";
+  $("paso-lab").style.display = s.admin ? "" : "none";
+  if (s.admin) {
+    $("e-nombre").textContent = s.admin;
+    if ($("lab-inicio").dataset.n !== String(s.laboratorios.length)) {
+      $("lab-inicio").innerHTML = opcionesLabs(s.laboratorios, s.laboratorio);
+      $("lab-inicio").dataset.n = String(s.laboratorios.length);
+    }
+  } else if (!$("e-servidor").dataset.puesto) {
+    $("e-servidor").value = s.servidor_panel; $("e-servidor").dataset.puesto = "1";
+  }
+  $("lab").style.display = $("lab-etq").style.display = conLabs && s.configurado && !CAMBIANDO ? "" : "none";
+  if (conLabs && s.configurado && $("lab").dataset.n !== String(s.laboratorios.length)) {
+    $("lab").innerHTML = opcionesLabs(s.laboratorios, s.laboratorio);
+    $("lab").dataset.n = String(s.laboratorios.length);
+  }
+  if (conLabs && s.configurado && document.activeElement !== $("lab")) $("lab").value = s.laboratorio;
+  $("btn-cambiar").style.display = s.configurado && !CAMBIANDO && !conLabs ? "" : "none";
   const chip = $("chip-red");
   if (!s.configurado) { $("h-puerta").textContent = "Sin puerta"; chip.className = "chip wait"; chip.lastElementChild.textContent = "Sin configurar"; return; }
-  $("h-puerta").textContent = `${s.dispositivo_id} · ${s.laboratorio}`;
+  $("h-puerta").textContent = conLabs ? s.dispositivo_id : `${s.dispositivo_id} · ${s.laboratorio}`;
   $("marco").classList.toggle("abierta", s.abierta);
   $("estado-puerta").textContent = s.abierta ? "🔓 Abierta" : "🔒 Bloqueada";
   $("led-v").classList.toggle("encendido", s.led === "verde");
@@ -420,7 +505,7 @@ function pintarEstado(s) {
   chip.lastElementChild.textContent = s.sin_red ? "Wi-Fi desconectado" : s.en_linea ? "En línea con el servidor" : "Buscando servidor…";
   $("btn-red").textContent = s.sin_red ? "📶 Reconectar Wi-Fi" : "📴 Desconectar Wi-Fi";
   $("d-id").textContent = s.dispositivo_id;
-  $("d-lab").textContent = s.laboratorio;
+  $("d-lab").textContent = s.laboratorio + (s.laboratorio_nombre ? " · " + s.laboratorio_nombre : "");
   $("d-srv").textContent = s.servidor;
   $("d-rostros").textContent = s.rostros_en_cache;
   $("d-pend").textContent = s.pendientes;
