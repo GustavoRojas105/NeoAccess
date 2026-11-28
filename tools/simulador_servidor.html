@@ -3,9 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NeoAccess · Simulador (servidor en línea)</title>
+<title>NeoAccess · Simulador de puerta (servidor)</title>
 <style>
-
   :root { --bg:#f1f5f9; --card:#fff; --line:#e2e8f0; --text:#0f172a; --muted:#64748b;
           --ok:#059669; --ok-bg:#ecfdf5; --bad:#dc2626; --bad-bg:#fef2f2; --warn:#b45309; --warn-bg:#fffbeb; }
   * { box-sizing:border-box; }
@@ -14,14 +13,18 @@
   header h1 { font-size:16px; margin:0; font-weight:700; }
   header .sub { color:#94a3b8; font-size:12px; }
   header .der { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  header .puerta-chip { background:#1e293b; color:#e2e8f0; border-radius:8px; padding:6px 10px; font-size:12px; }
+  header button { background:#1e293b; color:#e2e8f0; border-color:#334155; }
+  header button:hover { background:#334155; }
   main { display:grid; grid-template-columns: 300px 1fr 340px; gap:16px; padding:16px 20px; max-width:1400px; margin:0 auto; }
   @media (max-width:1100px) { main { grid-template-columns:1fr; } }
   .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; }
   .card h2 { font-size:13px; margin:0 0 10px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
-  select, input, button { font:inherit; }
+  select, input, button, textarea { font:inherit; }
   select, input[type=text], input[type=time] { padding:7px 9px; border:1px solid #cbd5e1; border-radius:8px; background:#fff; }
   button { cursor:pointer; border-radius:8px; border:1px solid #cbd5e1; background:#fff; padding:7px 12px; }
   button:hover { background:#f8fafc; }
+  button:disabled { opacity:.5; cursor:default; }
   button.prim { background:#0f172a; color:#fff; border-color:#0f172a; }
   button.prim:hover { background:#1e293b; }
   .chip { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:600; }
@@ -37,15 +40,16 @@
   .manija { width:10px; height:34px; border-radius:6px; background:#e2e8f0; box-shadow:0 1px 2px rgba(0,0,0,.4); }
   .lector { position:absolute; top:40px; right:-58px; width:44px; height:70px; background:#1e293b; border-radius:8px; display:flex; flex-direction:column; align-items:center; justify-content:space-around; padding:6px 0; }
   .cam { width:14px; height:14px; border-radius:50%; background:#0b1220; border:2px solid #334155; }
+  .cam.activa { background:#38bdf8; box-shadow:0 0 10px #38bdf8; }
   .leds { display:flex; gap:6px; }
   .led { width:10px; height:10px; border-radius:50%; background:#334155; }
   .led.verde.encendido { background:#22c55e; box-shadow:0 0 10px #22c55e; }
   .led.rojo.encendido { background:#ef4444; box-shadow:0 0 10px #ef4444; }
   .estado-puerta { text-align:center; font-weight:700; font-size:15px; position:relative; z-index:2; background:#fff; padding-top:6px; }
   .fila { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:10px; }
-  .dato { display:flex; justify-content:space-between; font-size:12px; padding:4px 0; border-bottom:1px dashed var(--line); }
+  .dato { display:flex; justify-content:space-between; gap:8px; font-size:12px; padding:4px 0; border-bottom:1px dashed var(--line); }
   .dato span:first-child { color:var(--muted); }
-  code { font-family: ui-monospace, Consolas, monospace; font-size:12px; }
+  code { font-family: ui-monospace, Consolas, monospace; font-size:12px; word-break:break-all; }
 
   /* Personas */
   .tabs { display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; }
@@ -57,7 +61,6 @@
   .persona .m { color:var(--muted); font-size:12px; }
   .persona button { margin-left:auto; white-space:nowrap; }
   .tag { font-size:10px; padding:2px 6px; border-radius:6px; background:#eef2ff; color:#4338ca; font-weight:600; }
-  .tag.gris { background:#f1f5f9; color:#64748b; }
   .hora-box { background:#f8fafc; border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:12px; }
   .hora-box label { margin-right:12px; }
 
@@ -76,32 +79,41 @@
   th { color:var(--muted); font-weight:600; }
   tr.ahora td { background:var(--ok-bg); }
   .nota { font-size:11px; color:var(--muted); margin-top:8px; }
-  /* Cámara */
-  .camara { position:relative; background:#0b1220; border-radius:10px; overflow:hidden; aspect-ratio:4/3; }
+
+  /* Conectar la puerta */
+  #config-box { max-width:720px; margin:30px auto; }
+  #config-box textarea { width:100%; min-height:170px; font-family:ui-monospace,Consolas,monospace; font-size:12px; padding:10px; border:1px solid #cbd5e1; border-radius:8px; margin-top:8px; }
+  ol li { margin:4px 0; }
+
+  /* Ventana de la cámara */
+  .velo { position:fixed; inset:0; background:rgba(15,23,42,.7); display:none; align-items:center; justify-content:center; z-index:50; padding:16px; }
+  .velo.visible { display:flex; }
+  .ventana { background:#fff; border-radius:14px; width:min(560px,100%); padding:16px; box-shadow:0 20px 50px rgba(0,0,0,.35); }
+  .ventana h3 { margin:0 0 2px; font-size:15px; }
+  .camara { position:relative; background:#0b1220; border-radius:10px; overflow:hidden; aspect-ratio:4/3; margin-top:10px; }
   .camara video { width:100%; height:100%; object-fit:cover; transform:scaleX(-1); }
   .camara .aviso { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#cbd5e1; text-align:center; padding:20px; font-size:13px; }
-  .camara .cuenta { position:absolute; inset:0; display:none; align-items:center; justify-content:center; font-size:72px; font-weight:800; color:#fff; text-shadow:0 2px 10px rgba(0,0,0,.6); }
-  .camara.escaneando { outline:4px solid #38bdf8; outline-offset:-4px; }
-  .barra { height:4px; background:#38bdf8; width:0; transition:width .2s linear; }
-  details summary { cursor:pointer; font-weight:600; margin:14px 0 8px; }
-  #config-box { max-width:720px; margin:30px auto; }
-  #config-box textarea { width:100%; min-height:180px; font-family:ui-monospace,Consolas,monospace; font-size:12px; padding:10px; border:1px solid #cbd5e1; border-radius:8px; margin-top:8px; }
-  ol li { margin:4px 0; }
+  .camara .guia { position:absolute; left:50%; top:46%; width:44%; aspect-ratio:3/4; transform:translate(-50%,-50%); border:3px dashed rgba(255,255,255,.55); border-radius:50%; }
+  .camara .cuenta { position:absolute; inset:0; display:none; align-items:center; justify-content:center; font-size:84px; font-weight:800; color:#fff; text-shadow:0 2px 12px rgba(0,0,0,.6); }
+  .camara.escaneando .guia { border-color:#38bdf8; border-style:solid; }
+  .barra { height:4px; background:#38bdf8; width:0; transition:width .2s linear; border-radius:2px; margin-top:6px; }
+  .ventana .estado { font-size:13px; margin-top:8px; min-height:18px; }
 </style>
 </head>
 <body>
 <header>
   <div>
     <h1>NeoAccess · Simulador de puerta (servidor en línea)</h1>
-    <div class="sub">Funciona como una Raspberry real conectada a <code id="h-srv" style="color:#cbd5e1">—</code> y escanea tu rostro con la cámara de esta PC</div>
+    <div class="sub">Hace lo mismo que la Raspberry Pi de la puerta, con la cámara de esta computadora, y todo se refleja en el servidor</div>
   </div>
   <div class="der">
+    <span class="puerta-chip" id="h-puerta">Sin puerta</span>
     <button id="btn-cambiar" style="display:none">🔁 Cambiar puerta</button>
     <span id="chip-red" class="chip wait"><span class="p"></span><span>Conectando…</span></span>
   </div>
 </header>
 
-<!-- Sin configurar: pegar el config.json del panel -->
+<!-- Sin configurar: pegar el config.json de la puerta (panel del servidor) -->
 <section id="config-box" class="card" style="display:none">
   <h2>Conectar esta puerta simulada al servidor</h2>
   <ol>
@@ -126,16 +138,17 @@
     <h2>La puerta</h2>
     <div id="marco" class="marco">
       <div class="hoja"><div class="manija"></div></div>
-      <div class="lector"><div class="cam" title="Cámara"></div><div class="leds"><div id="led-v" class="led verde"></div><div id="led-r" class="led rojo"></div></div></div>
+      <div class="lector"><div id="lector-cam" class="cam" title="Cámara"></div><div class="leds"><div id="led-v" class="led verde"></div><div id="led-r" class="led rojo"></div></div></div>
     </div>
     <div id="estado-puerta" class="estado-puerta">🔒 Bloqueada</div>
     <div style="margin-top:14px">
       <div class="dato"><span>Dispositivo</span><code id="d-id">—</code></div>
       <div class="dato"><span>Laboratorio</span><code id="d-lab">—</code></div>
+      <div class="dato"><span>Servidor</span><code id="d-srv">—</code></div>
       <div class="dato"><span>Rostros en la copia local</span><span id="d-rostros">—</span></div>
       <div class="dato"><span>Pendientes por enviar</span><span id="d-pend">0</span></div>
       <div class="dato"><span>Última sincronización</span><span id="d-sync">—</span></div>
-      <div class="dato"><span>Motor facial</span><span id="d-motor">—</span></div>
+      <div class="dato"><span>Reconocimiento facial</span><span id="d-motor">—</span></div>
     </div>
     <div class="fila">
       <button id="btn-red">📴 Desconectar Wi-Fi</button>
@@ -144,38 +157,30 @@
     <p class="nota">Desde el panel del servidor (Dispositivos → 🔑) puedes abrir esta puerta a distancia y verás cómo se abre aquí.</p>
   </section>
 
-  <!-- Cámara -->
+  <!-- Quién llega -->
   <section class="card">
-    <h2>Escanear rostro</h2>
+    <h2>¿Quién llega a la puerta?</h2>
     <div class="hora-box">
       <label><input type="radio" name="modo" value="real" checked> Hora real</label>
       <label><input type="radio" name="modo" value="personalizado"> Simular día y hora:</label>
       <select id="dia"></select>
       <input type="time" id="hora" value="08:00">
       <div class="nota">La decisión usa el día y hora elegidos; el registro en la plataforma se guarda con la hora real.</div>
+      <div style="margin-top:8px"><label><input type="checkbox" id="sin-camara"> Sin cámara: usar el rostro que ya tiene registrado</label></div>
     </div>
-    <div id="camara" class="camara">
-      <video id="video" autoplay playsinline muted></video>
-      <div id="cam-aviso" class="aviso">Pulsa “Encender cámara”.</div>
-      <div id="cuenta" class="cuenta"></div>
+    <div class="fila" style="margin:0 0 10px">
+      <input type="text" id="buscar" placeholder="Buscar por nombre, matrícula o grupo…" style="flex:1; min-width:200px">
+      <button id="btn-cualquiera">📷 Escanear a quien sea</button>
+      <button id="btn-desconocido">👤 Persona desconocida</button>
     </div>
-    <div class="barra" id="barra"></div>
-    <div class="fila">
-      <button id="btn-camara">📷 Encender cámara</button>
-      <button class="prim" id="btn-escanear" disabled>🙂 Escanear rostro</button>
+    <div class="tabs" id="tabs">
+      <button data-t="todos" class="activo">Todos</button>
+      <button data-t="docente">Docentes</button>
+      <button data-t="alumno">Alumnos</button>
+      <button data-t="personal_limpieza">Limpieza</button>
     </div>
-    <div id="scan-estado" class="nota"></div>
-    <p class="nota">Igual que la puerta: cuenta regresiva de 3 s, toma la foto y busca tu rostro hasta 8 s. La foto no se guarda: solo se compara su vector con los rostros registrados en el servidor.</p>
-
-    <details>
-      <summary>Sin cámara: elegir quién llega</summary>
-      <div class="fila" style="margin:0 0 10px">
-        <input type="text" id="buscar" placeholder="Buscar por nombre, matrícula o grupo…" style="flex:1; min-width:200px">
-        <button id="btn-desconocido">👤 Persona desconocida</button>
-      </div>
-      <div class="lista" id="lista"></div>
-      <p class="nota">Solo aparecen quienes tienen rostro registrado en el servidor (es lo que la puerta descarga).</p>
-    </details>
+    <div class="lista" id="lista"></div>
+    <p class="nota"><b>Pasar frente a la cámara</b> enciende la cámara de esta PC: la puerta decide con <b>tu cara real</b>, igual que la Raspberry. La lista son las personas con <span class="tag">rostro registrado</span> en el servidor (lo que la puerta descarga).</p>
   </section>
 
   <!-- Resultado, bitácora, horario -->
@@ -192,11 +197,34 @@
   </section>
 </main>
 
+<!-- Cámara -->
+<div id="velo" class="velo">
+  <div class="ventana">
+    <h3 id="cam-titulo">Pasar frente a la cámara</h3>
+    <div class="nota" style="margin:0" id="cam-sub">Acomoda tu cara dentro del óvalo.</div>
+    <div id="camara" class="camara">
+      <video id="video" autoplay playsinline muted></video>
+      <div class="guia"></div>
+      <div id="cam-aviso" class="aviso">Encendiendo la cámara…</div>
+      <div id="cuenta" class="cuenta"></div>
+    </div>
+    <div class="barra" id="barra"></div>
+    <div class="estado" id="cam-estado"></div>
+    <div class="fila" style="justify-content:flex-end">
+      <button id="btn-cam-cerrar">Cerrar</button>
+      <button class="prim" id="btn-cam-otra" style="display:none">🔁 Escanear otra vez</button>
+    </div>
+    <p class="nota">La foto solo vive en la memoria de esta PC: se convierte en un vector, se compara y se descarta. No se guarda ni se manda al servidor.</p>
+  </div>
+</div>
+
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
 const TIPOS = { docente: "Docente", alumno: "Alumno", personal_limpieza: "Limpieza" };
-let PERSONAS = [], ESTADO = null, DIAS = [], STREAM = null, ESCANEANDO = false, CAMBIANDO = false, ROSTROS = -1;
+const esperar = ms => new Promise(r => setTimeout(r, ms));
+let PERSONAS = [], FILTRO = "todos", ESTADO = null, DIAS = [], ROSTROS = -1, CAMBIANDO = false;
+let STREAM = null, ESPERADO = null, ESCANEANDO = false, CANCELADO = false;
 
 async function api(ruta, cuerpo) {
   const r = await fetch(ruta, cuerpo === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo) });
@@ -204,14 +232,164 @@ async function api(ruta, cuerpo) {
   if (!r.ok) throw new Error(d.error || r.statusText);
   return d;
 }
-const esperar = ms => new Promise(r => setTimeout(r, ms));
 
 function momento() {
   const modo = document.querySelector('input[name="modo"]:checked').value;
   return { modo, dia: $("dia").value, hora: $("hora").value || "08:00" };
 }
 
-// ---------- config.json de la puerta ----------
+// ---------- Personas ----------
+async function cargarPersonas() {
+  const d = await api("/api/personas");
+  PERSONAS = d.personas;
+  if (!DIAS.length) {
+    DIAS = d.dias;
+    $("dia").innerHTML = DIAS.map(x => `<option>${x}</option>`).join("");
+    $("dia").selectedIndex = (new Date().getDay() + 6) % 7;
+  }
+  pintarPersonas();
+}
+
+function pintarPersonas() {
+  const q = $("buscar").value.trim().toLowerCase();
+  const lista = PERSONAS.filter(p => (FILTRO === "todos" || p.tipo === FILTRO) &&
+    (!q || [p.nombre_completo, p.matricula_clave, p.grupo_id, p.id].some(v => String(v || "").toLowerCase().includes(q))));
+  $("lista").innerHTML = lista.length ? lista.map(p => `
+    <div class="persona">
+      <div>
+        <div class="n">${esc(p.nombre_completo)}</div>
+        <div class="m">${TIPOS[p.tipo] || esc(p.tipo)} · ${esc(p.matricula_clave || p.id)}${p.grupo_id ? " · " + esc(p.grupo_id) : ""}
+          <span class="tag">rostro registrado</span></div>
+      </div>
+      <button class="prim" data-id="${esc(p.id)}">Pasar frente a la cámara</button>
+    </div>`).join("") : `<div class="persona m">${PERSONAS.length ? "Nadie coincide con la búsqueda." : "Nadie tiene rostro registrado en el servidor todavía (Alumnos → Registrar rostro)."}</div>`;
+}
+
+function mostrarResultado(r, extra) {
+  const el = $("resultado");
+  el.className = "resultado " + r.resultado;
+  el.innerHTML = `<div class="t">${r.resultado === "permitido" ? "✅ Acceso permitido" : "⛔ Acceso denegado"}</div>
+    <div style="margin-top:4px"><strong>${esc(r.nombre)}</strong> · ${esc(r.momento)}</div>
+    <div style="margin-top:4px">${esc(r.motivo)}</div>
+    ${extra ? `<div class="nota">${extra}</div>` : ""}
+    <div class="nota">${r.enviado ? "📡 Ya está registrado en la plataforma." : "📦 Sin conexión: quedó guardado y se enviará al reconectar."}</div>`;
+}
+
+async function presentarSinCamara(usuario_id) {
+  try { mostrarResultado(await api("/api/presentar", { usuario_id, ...momento() })); refrescar(); }
+  catch (e) { alert("No se pudo simular: " + e.message); }
+}
+
+// ---------- Cámara ----------
+async function abrirCamara(persona) {
+  ESPERADO = persona;
+  $("cam-titulo").textContent = persona ? `${persona.nombre_completo} pasa frente a la cámara` : "Pasar frente a la cámara";
+  $("cam-sub").textContent = "Acomoda tu cara dentro del óvalo y mira a la cámara.";
+  $("cam-estado").textContent = "";
+  $("btn-cam-otra").style.display = "none";
+  $("velo").classList.add("visible");
+  $("lector-cam").classList.add("activa");
+  if (!STREAM) {
+    $("cam-aviso").style.display = "flex";
+    $("cam-aviso").textContent = "Encendiendo la cámara…";
+    try {
+      STREAM = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false });
+      $("video").srcObject = STREAM;
+      await new Promise(r => $("video").onloadedmetadata = r);
+    } catch (e) {
+      $("cam-aviso").textContent = "No se pudo usar la cámara (" + e.message + "). Revisa el permiso del navegador o marca “Sin cámara”.";
+      return;
+    }
+  }
+  $("cam-aviso").style.display = "none";
+  escanear();
+}
+
+function cerrarCamara() {
+  CANCELADO = true;
+  $("velo").classList.remove("visible");
+  $("lector-cam").classList.remove("activa");
+  if (STREAM) { STREAM.getTracks().forEach(t => t.stop()); STREAM = null; $("video").srcObject = null; }
+}
+
+function foto() {
+  const v = $("video"), c = document.createElement("canvas");
+  c.width = v.videoWidth || 640; c.height = v.videoHeight || 480;
+  c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
+  return c.toDataURL("image/jpeg", 0.85);
+}
+
+async function escanear() {
+  if (ESCANEANDO || !STREAM) return;
+  ESCANEANDO = true; CANCELADO = false;
+  $("btn-cam-otra").style.display = "none";
+  const cuenta = $("cuenta"), estado = $("cam-estado");
+  try {
+    cuenta.style.display = "flex";
+    for (let i = 3; i > 0; i--) {
+      if (CANCELADO) return;
+      cuenta.textContent = i; estado.textContent = "La foto se toma al llegar a cero…"; await esperar(1000);
+    }
+    cuenta.style.display = "none";
+    $("camara").classList.add("escaneando");
+    const inicio = Date.now(), fin = inicio + 8000;
+    let r = null;
+    while (Date.now() < fin && !CANCELADO) {
+      $("barra").style.width = Math.min(100, (Date.now() - inicio) / 80) + "%";
+      estado.textContent = "📸 Buscando un rostro…";
+      r = await api("/api/escanear", { imagen: foto(), esperado: ESPERADO?.id || null, ...momento() });
+      if (r.rostro) break;
+      await esperar(250);
+    }
+    if (CANCELADO) return;
+    if (!r || !r.rostro) {
+      estado.innerHTML = "😕 No se vio ningún rostro. Acércate, quita lo que tape tu cara y busca buena luz.";
+      $("btn-cam-otra").style.display = "";
+      return;
+    }
+    let extra = `Similitud ${r.similitud} · mínimo para reconocer ${r.umbral}`;
+    if (r.esperado_nombre && r.coincide === false)
+      extra += `<br>⚠️ Se eligió a <b>${esc(r.esperado_nombre)}</b>, pero la cámara reconoció a <b>${esc(r.nombre)}</b>: manda la cara, igual que en la puerta real.`;
+    mostrarResultado(r, extra);
+    estado.innerHTML = r.resultado === "permitido"
+      ? `<span style="color:var(--ok);font-weight:700">✅ ${esc(r.nombre)}: acceso permitido</span>`
+      : `<span style="color:var(--bad);font-weight:700">⛔ ${esc(r.nombre)}: ${esc(r.motivo)}</span>`;
+    refrescar();
+    await esperar(2500);
+    if (!CANCELADO) cerrarCamara();
+  } catch (e) {
+    estado.textContent = "Error: " + e.message;
+    $("btn-cam-otra").style.display = "";
+  } finally {
+    cuenta.style.display = "none"; $("camara").classList.remove("escaneando"); $("barra").style.width = "0";
+    ESCANEANDO = false;
+  }
+}
+
+function pasar(persona) {
+  if ($("sin-camara").checked) return presentarSinCamara(persona ? persona.id : null);
+  abrirCamara(persona);
+}
+
+$("lista").addEventListener("click", e => {
+  const b = e.target.closest("button[data-id]");
+  if (b) pasar(PERSONAS.find(p => p.id === b.dataset.id));
+});
+$("btn-cualquiera").onclick = () => $("sin-camara").checked ? alert("Quita “Sin cámara” para escanear con la cámara.") : abrirCamara(null);
+$("btn-desconocido").onclick = () => presentarSinCamara(null);
+$("btn-cam-cerrar").onclick = cerrarCamara;
+$("btn-cam-otra").onclick = escanear;
+$("velo").onclick = e => { if (e.target === $("velo")) cerrarCamara(); };
+document.addEventListener("keydown", e => { if (e.key === "Escape" && $("velo").classList.contains("visible")) cerrarCamara(); });
+$("buscar").oninput = pintarPersonas;
+$("tabs").onclick = e => {
+  const b = e.target.closest("button"); if (!b) return;
+  FILTRO = b.dataset.t;
+  document.querySelectorAll("#tabs button").forEach(x => x.classList.toggle("activo", x === b));
+  pintarPersonas();
+};
+
+// ---------- Conectar la puerta ----------
 $("config-archivo").onchange = async e => { const f = e.target.files[0]; if (f) $("config-texto").value = await f.text(); };
 $("btn-config").onclick = async () => {
   $("config-error").textContent = "";
@@ -223,95 +401,7 @@ $("btn-config").onclick = async () => {
 $("btn-cambiar").onclick = () => { CAMBIANDO = true; refrescar(); };
 $("btn-config-cancelar").onclick = () => { CAMBIANDO = false; refrescar(); };
 
-// ---------- cámara ----------
-$("btn-camara").onclick = async () => {
-  if (STREAM) {
-    STREAM.getTracks().forEach(t => t.stop()); STREAM = null; $("video").srcObject = null;
-    $("cam-aviso").style.display = "flex"; $("cam-aviso").textContent = "Cámara apagada.";
-    $("btn-camara").textContent = "📷 Encender cámara"; $("btn-escanear").disabled = true; return;
-  }
-  try {
-    STREAM = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false });
-    $("video").srcObject = STREAM; $("cam-aviso").style.display = "none";
-    $("btn-camara").textContent = "⏹ Apagar cámara"; $("btn-escanear").disabled = false;
-  } catch (e) { $("cam-aviso").textContent = "No se pudo usar la cámara (" + e.message + "). Usa la opción sin cámara."; }
-};
-
-function foto() {
-  const v = $("video"), c = document.createElement("canvas");
-  c.width = v.videoWidth || 640; c.height = v.videoHeight || 480;
-  c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
-  return c.toDataURL("image/jpeg", 0.85);
-}
-
-$("btn-escanear").onclick = async () => {
-  if (ESCANEANDO || !STREAM) return;
-  ESCANEANDO = true; $("btn-escanear").disabled = true; $("resultado").className = "resultado";
-  const cuenta = $("cuenta"), estado = $("scan-estado");
-  try {
-    cuenta.style.display = "flex";
-    for (let i = 3; i > 0; i--) { cuenta.textContent = i; estado.textContent = "Mira a la cámara…"; await esperar(1000); }
-    cuenta.style.display = "none";
-    $("camara").classList.add("escaneando");
-    const inicio = Date.now(), fin = inicio + 8000;
-    let r = null;
-    while (Date.now() < fin) {
-      $("barra").style.width = Math.min(100, (Date.now() - inicio) / 80) + "%";
-      estado.textContent = "Buscando rostro…";
-      r = await api("/api/escanear", { imagen: foto(), ...momento() });
-      if (r.rostro) break;
-      await esperar(250);
-    }
-    if (!r || !r.rostro) { estado.textContent = "No se detectó ningún rostro. Acércate a la cámara y busca buena luz."; return; }
-    estado.textContent = "";
-    mostrarResultado(r, `Similitud ${r.similitud} · mínimo para reconocer ${r.umbral}`);
-  } catch (e) { estado.textContent = "Error: " + e.message; }
-  finally {
-    cuenta.style.display = "none"; $("camara").classList.remove("escaneando"); $("barra").style.width = "0";
-    ESCANEANDO = false; $("btn-escanear").disabled = !STREAM; refrescar();
-  }
-};
-
-function mostrarResultado(r, extra) {
-  const el = $("resultado");
-  el.className = "resultado " + r.resultado;
-  el.innerHTML = `<div class="t">${r.resultado === "permitido" ? "✅ Acceso permitido" : "⛔ Acceso denegado"}</div>
-    <div style="margin-top:4px"><strong>${esc(r.nombre)}</strong> · ${esc(r.momento)}</div>
-    <div style="margin-top:4px">${esc(r.motivo)}</div>
-    ${extra ? `<div class="nota">${esc(extra)}</div>` : ""}
-    <div class="nota">${r.enviado ? "📡 Ya está registrado en la plataforma." : "📦 Sin conexión: quedó guardado y se enviará al reconectar."}</div>`;
-}
-
-// ---------- sin cámara ----------
-async function cargarPersonas() {
-  const d = await api("/api/personas");
-  PERSONAS = d.personas;
-  if (!DIAS.length) {
-    DIAS = d.dias;
-    $("dia").innerHTML = DIAS.map(x => `<option>${x}</option>`).join("");
-    $("dia").selectedIndex = (new Date().getDay() + 6) % 7;
-  }
-  pintarPersonas();
-}
-function pintarPersonas() {
-  const q = $("buscar").value.trim().toLowerCase();
-  const lista = PERSONAS.filter(p => !q || [p.nombre_completo, p.matricula_clave, p.grupo_id, p.id].some(v => String(v || "").toLowerCase().includes(q)));
-  $("lista").innerHTML = lista.length ? lista.map(p => `
-    <div class="persona">
-      <div><div class="n">${esc(p.nombre_completo)}</div>
-        <div class="m">${TIPOS[p.tipo] || esc(p.tipo)} · ${esc(p.matricula_clave || p.id)}${p.grupo_id ? " · " + esc(p.grupo_id) : ""}</div></div>
-      <button data-id="${esc(p.id)}">Llega a la puerta</button>
-    </div>`).join("") : '<div class="persona m">Nadie con rostro registrado (o nadie coincide con la búsqueda).</div>';
-}
-async function presentar(usuario_id) {
-  try { mostrarResultado(await api("/api/presentar", { usuario_id, ...momento() })); refrescar(); }
-  catch (e) { alert("No se pudo simular: " + e.message); }
-}
-$("lista").addEventListener("click", e => { const b = e.target.closest("button[data-id]"); if (b) presentar(b.dataset.id); });
-$("btn-desconocido").onclick = () => presentar(null);
-$("buscar").oninput = pintarPersonas;
-
-// ---------- estado ----------
+// ---------- Estado ----------
 function pintarEstado(s) {
   ESTADO = s;
   const verConfig = !s.configurado || CAMBIANDO;
@@ -320,8 +410,8 @@ function pintarEstado(s) {
   $("btn-config-cancelar").style.display = s.configurado ? "" : "none";
   $("btn-cambiar").style.display = s.configurado && !CAMBIANDO ? "" : "none";
   const chip = $("chip-red");
-  if (!s.configurado) { chip.className = "chip wait"; chip.lastElementChild.textContent = "Sin configurar"; return; }
-  $("h-srv").textContent = s.servidor;
+  if (!s.configurado) { $("h-puerta").textContent = "Sin puerta"; chip.className = "chip wait"; chip.lastElementChild.textContent = "Sin configurar"; return; }
+  $("h-puerta").textContent = `${s.dispositivo_id} · ${s.laboratorio}`;
   $("marco").classList.toggle("abierta", s.abierta);
   $("estado-puerta").textContent = s.abierta ? "🔓 Abierta" : "🔒 Bloqueada";
   $("led-v").classList.toggle("encendido", s.led === "verde");
@@ -331,10 +421,11 @@ function pintarEstado(s) {
   $("btn-red").textContent = s.sin_red ? "📶 Reconectar Wi-Fi" : "📴 Desconectar Wi-Fi";
   $("d-id").textContent = s.dispositivo_id;
   $("d-lab").textContent = s.laboratorio;
+  $("d-srv").textContent = s.servidor;
   $("d-rostros").textContent = s.rostros_en_cache;
   $("d-pend").textContent = s.pendientes;
   $("d-sync").textContent = s.ultima_sincronizacion || "—";
-  $("d-motor").textContent = s.motor;
+  $("d-motor").textContent = s.motor === "listo" ? "✅ listo" : s.motor;
   if (s.rostros_en_cache !== ROSTROS) { ROSTROS = s.rostros_en_cache; cargarPersonas(); }
   $("bitacora").innerHTML = s.bitacora.map(e => `<div class="ev ${esc(e.tipo)}"><span class="h">${esc(e.hora)}</span><span class="tt">${esc(e.titulo)}</span>${e.detalle ? `<div class="d">${esc(e.detalle)}</div>` : ""}</div>`).join("");
   const hoy = DIAS[(new Date().getDay() + 6) % 7];
@@ -344,6 +435,7 @@ function pintarEstado(s) {
     return `<tr class="${ahora ? "ahora" : ""}"><td>${esc(h.dia_semana)}</td><td>${esc(h.hora_inicio)}–${esc(h.hora_fin)}</td><td>${esc(h.materia)}<div class="nota" style="margin:0">${esc(h.grupo_id || "Libre")}</div></td></tr>`;
   }).join("")}</table>` : '<p class="nota">Sin horarios (o la puerta aún no se sincroniza).</p>';
 }
+
 async function refrescar() { try { pintarEstado(await api("/api/estado")); } catch (e) { /* simulador cerrado */ } }
 
 $("btn-red").onclick = async () => { await api("/api/red", { cortar: !ESTADO?.sin_red }); refrescar(); };

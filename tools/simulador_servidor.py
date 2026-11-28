@@ -132,9 +132,13 @@ class SimuladorServidor:
         rec = nodo.process_access(vector, momento)
         rec.pop("token_api", None)
         nombre = usuario.get("nombre") if usuario else "Rostro no reconocido"
+        esperado = datos.get("esperado")
+        esperado_nombre = next((p["nombre_completo"] for p in self.personas() if p["id"] == esperado), None) if esperado else None
         nodo.anotar(("✅ " if rec["resultado"] == "permitido" else "⛔ ") + f"{nombre} (cámara)",
                     f"{rec['motivo']} · similitud {similitud:.2f}", rec["resultado"])
         return {**rec, "rostro": True, "nombre": nombre, "similitud": round(similitud, 3),
+                "esperado_nombre": esperado_nombre,
+                "coincide": (usuario or {}).get("usuario_id") == esperado if esperado else None,
                 "umbral": nodo.threshold, "enviado": len(rm._read_json(rm.QUEUE_FILE, [])) == en_cola,
                 "momento": f"{DIAS[(momento or __import__('datetime').datetime.now()).weekday()]} "
                            f"{(momento or __import__('datetime').datetime.now()):%H:%M}"}
@@ -183,7 +187,8 @@ def crear_handler(sim: SimuladorServidor):
         def _local(self):
             # Solo la página de esta misma computadora (nada de otras pestañas o sitios)
             origen = self.headers.get("Origin")
-            return origen is None or origen == f"http://127.0.0.1:{self.server.server_address[1]}"
+            puerto = self.server.server_address[1]
+            return origen is None or origen in (f"http://127.0.0.1:{puerto}", f"http://localhost:{puerto}")
 
         def do_GET(self):
             if self.path in ("/", "/index.html"):
