@@ -17,10 +17,10 @@ Cada tipo corre en un proceso aparte con una **base de datos temporal nueva**. L
 | Tipo | Archivo | Pruebas | Resultado |
 |---|---|---|---|
 | Caja blanca | `test_caja_blanca.py` | 46 | ✅ 46 pasan |
-| Caja negra (API) | `test_caja_negra.py` | 73 | ✅ 73 pasan |
+| Caja negra (API) | `test_caja_negra.py` | 74 | ✅ 74 pasan |
 | Caja gris | `test_caja_gris.py` | 19 | ✅ 19 pasan |
 | Caja negra (interfaz) | navegador, manual asistida | 9 escenarios | ✅ todos correctos |
-| **Total automatizadas** | | **138** | **✅ 138 pasan** |
+| **Total automatizadas** | | **139** | **✅ 139 pasan** |
 
 Muchas pruebas usan `subTest` con tablas de casos. En total se revisan **más de 200 combinaciones** de entrada.
 

@@ -23,7 +23,7 @@ COPY frontend frontend
 COPY raspberry_pi/rpi_main.py raspberry_pi/face_engine.py raspberry_pi/descargar_modelos.py \
      raspberry_pi/test_conexion.py raspberry_pi/setup_rpi.sh raspberry_pi/requirements.txt \
      raspberry_pi/LEEME_RASPBERRY.md raspberry_pi/
-COPY tools/crear_admin.py tools/asignar_contrasena.py tools/
+COPY tools/crear_admin.py tools/asignar_contrasena.py tools/contrasena_generica.py tools/
 # Modelos de reconocimiento facial (registro desde el panel)
 RUN python raspberry_pi/descargar_modelos.py
 

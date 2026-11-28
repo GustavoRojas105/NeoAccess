@@ -607,6 +607,37 @@ class TestSinPersonasRepetidas(Base):
         self.assertEqual(r.status_code, 400)
 
 
+class TestContrasenaGenerica(Base):
+    """tools/contrasena_generica.py: alumnos sin cuenta entran con la genérica y deben cambiarla de inmediato."""
+
+    def test_generica_y_cambio_obligatorio(self):
+        import database.database as dbm
+        from tools.contrasena_generica import aplicar
+        base = {"tipo": "alumno", "carrera": ISC, "grupo_id": None, "estado": "activo"}
+        C.post("/api/users", headers=self.A, json={**base, "id": "GEN-1", "matricula_clave": "230117001",
+                                                   "nombre_completo": nombre_unico("Alumno")})
+        C.post("/api/users", headers=self.A, json={**base, "id": "GEN-2", "matricula_clave": "230117002",
+                                                   "nombre_completo": nombre_unico("Alumno"), "password": "PropiaClave2026"})
+        cambiados = [m for m, _ in aplicar(dbm.DB_PATH, "Generica-2026")]
+        self.assertIn("230117001", cambiados)
+        self.assertNotIn("230117002", cambiados)          # el que ya tenía la suya no se toca
+        self.assertTrue(entrar("230117002", "PropiaClave2026"))
+        with self.assertRaises(ValueError):
+            aplicar(dbm.DB_PATH, "corta")
+
+        limpiar_intentos()
+        r = C.post("/api/auth/login", json={"username": "230117001", "password": "Generica-2026"})
+        self.assertEqual(r.status_code, 200, r.text)
+        H = {"Authorization": f"Bearer {r.json()['token']}"}
+        r = C.get("/api/portal/student-data", headers=H)
+        self.assertEqual(r.status_code, 403)                # nada funciona hasta cambiarla
+        self.assertEqual(r.headers.get("X-NeoAccess-Cambiar-Password"), "1")
+        self.assertEqual(C.post("/api/auth/required-password", headers=H, json={"nueva": "Generica-2026"}).status_code, 400)
+        self.assertEqual(C.post("/api/auth/required-password", headers=H, json={"nueva": "MiClaveNueva9"}).status_code, 200)
+        self.assertEqual(C.get("/api/portal/student-data", headers=H).status_code, 200)
+        self.assertTrue(entrar("230117001", "MiClaveNueva9"))
+
+
 class TestRestablecerPassword(Base):
     """El administrador da una contraseña temporal; al entrar se obliga a cambiarla."""
 
