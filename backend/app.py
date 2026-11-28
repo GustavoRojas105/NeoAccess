@@ -45,7 +45,11 @@ init_db()
 app = FastAPI(
     title="NeoAccess IoT Server",
     description="Servidor Local de Control de Acceso por Reconocimiento Facial para Laboratorios ITSOEH",
-    version="1.1.0"
+    version="1.1.0",
+    # La documentación automática (/docs, /openapi.json) lista toda la API: solo en desarrollo
+    docs_url="/docs" if os.environ.get("NEOACCESS_DEV") == "1" else None,
+    redoc_url=None,
+    openapi_url="/openapi.json" if os.environ.get("NEOACCESS_DEV") == "1" else None,
 )
 
 # CORS (RF-22): el Dashboard se sirve desde este mismo servidor, por lo que no
