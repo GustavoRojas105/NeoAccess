@@ -7,7 +7,8 @@ import sqlite3
 import os
 from datetime import datetime
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "neoaccess.db")
+# En el servidor (Docker) la base vive fuera del código: NEOACCESS_DB_PATH=/datos/neoaccess.db
+DB_PATH = os.environ.get("NEOACCESS_DB_PATH") or os.path.join(os.path.dirname(__file__), "neoaccess.db")
 
 def get_connection():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)

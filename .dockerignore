@@ -1,0 +1,15 @@
+.git
+.claude
+**/__pycache__
+database/*.db*
+database/respaldos
+config_servidor.env
+ACCESOS_PRUEBA.txt
+raspberry_pi/config.json
+raspberry_pi/models
+raspberry_pi/*.json
+!raspberry_pi/config.json.template
+tests
+tools/fotos_credenciales
+tools/simulador_datos
+prueba_acceso
