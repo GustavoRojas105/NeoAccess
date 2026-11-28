@@ -24,7 +24,9 @@ true
 echo "== 2. Carpeta de datos y configuración en $BASE"
 mkdir -p "$BASE/datos" "$BASE/respaldos"
 chown 10001 "$BASE/datos"
-chmod 700 "$BASE/datos" "$BASE/respaldos"
+chmod 700 "$BASE/datos"
+chown root:pandasesino "$BASE/respaldos" 2>/dev/null || true
+chmod 750 "$BASE/respaldos"
 if [ ! -f "$BASE/neoaccess.env" ]; then
   cat > "$BASE/neoaccess.env" <<'ENV'
 # NeoAccess en el servidor. Después de editar:  sudo bash ~/neoaccess/deploy/instalar_servidor.sh
@@ -45,7 +47,7 @@ if [ -f "$BASE/datos/neoaccess.db" ]; then
   echo "== Respaldo de la base antes de actualizar"
   docker exec neoaccess python -c "import sqlite3; s=sqlite3.connect('/datos/neoaccess.db'); d=sqlite3.connect('/datos/respaldo.tmp'); s.backup(d); d.close()" \
     && mv "$BASE/datos/respaldo.tmp" "$BASE/respaldos/neoaccess_$FECHA.db" || echo "   (no se pudo respaldar en caliente; sigue)"
-  ls -1t "$BASE"/respaldos/*.db 2>/dev/null | tail -n +15 | xargs -r rm -f   # guarda los 14 más recientes
+  ls -1t "$BASE"/respaldos/neoaccess_*.db 2>/dev/null | tail -n +15 | xargs -r rm -f   # guarda los 14 más recientes
 fi
 
 echo "== 3. Construir la imagen de NeoAccess"
